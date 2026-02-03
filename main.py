@@ -5,6 +5,7 @@ import sys
 from rich.console import Console
 from orchestrator import CerebrasAttacker
 from blue_team import BlueTeamAnalyzer, print_blue_team_analysis
+from attack_graph import AttackGraphGenerator, print_attack_graph
 from genome_analysis import SecurityGenomeAnalyzer, print_genome_analysis
 # Load .env file
 if os.path.exists(".env"):
@@ -97,6 +98,22 @@ def main():
             )
             
             print_blue_team_analysis(blue_result)
+            # Run attack graph generation
+            console.print()
+            console.print("[bold yellow]Generating Attack Graph...[/bold yellow]")
+            console.print()
+            
+            graph_gen = AttackGraphGenerator(
+                api_key=args.api_key,
+                model=args.model
+            )
+            
+            graph_result = graph_gen.generate(
+                attack_log=attacker.state.attack_log,
+                state=attacker.state
+            )
+            
+            print_attack_graph(graph_result)
             
     except KeyboardInterrupt:
         console.print("\n[yellow]Attack interrupted by user[/yellow]")
