@@ -10,7 +10,7 @@ class BenchmarkHarness:
         self.cerebras_url = "https://api.cerebras.ai/v1/chat/completions"
         self.results = []
     
-    def run_cerebras(self, prompt: str, model: str = "llama3.1-8b") -> dict:
+    def run_cerebras(self, prompt: str, model: str = "zai-glm-4.7") -> dict:
         start = time.time()
         
         response = requests.post(

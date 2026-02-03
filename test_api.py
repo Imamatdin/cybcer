@@ -15,7 +15,7 @@ if not api_key:
     print("ERROR: CEREBRAS_API_KEY not set")
     exit(1)
 
-print(f"Testing with key: {api_key[:8]}...")
+print(f"Testing GLM 4.7 with key: {api_key[:8]}...")
 
 r = requests.post(
     "https://api.cerebras.ai/v1/chat/completions",
@@ -24,11 +24,11 @@ r = requests.post(
         "Content-Type": "application/json"
     },
     json={
-        "model": "llama3.1-8b",
-        "messages": [{"role": "user", "content": "Say hello"}],
-        "max_tokens": 50
+        "model": "zai-glm-4.7",
+        "messages": [{"role": "user", "content": "Analyze this code for SQL injection: user_input = request.args.get('id'); cursor.execute(f'SELECT * FROM users WHERE id = {user_input}')"}],
+        "max_tokens": 200
     }
 )
 
 print(f"Status: {r.status_code}")
-print(f"Response: {r.text[:500]}")
+print(f"Response: {r.text[:800]}")

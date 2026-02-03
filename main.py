@@ -44,7 +44,7 @@ def main():
     )
     parser.add_argument(
         "--model", "-m",
-        default="llama3.1-8b",
+        default="zai-glm-4.7",
         help="Cerebras model to use"
     )
     parser.add_argument(

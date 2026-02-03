@@ -4,7 +4,7 @@ from typing import Any
 
 
 class BlueTeamAnalyzer:
-    def __init__(self, api_key: str, model: str = "llama3.1-8b"):
+    def __init__(self, api_key: str, model: str = "zai-glm-4.7"):
         self.api_key = api_key
         self.model = model
     

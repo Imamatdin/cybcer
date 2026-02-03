@@ -29,7 +29,7 @@ CURRENT ATTACK STATE:
 """
 
 class CerebrasAttacker:
-    def __init__(self, api_key: str, target_url: str, model: str = "llama3.1-8b"):
+    def __init__(self, api_key: str, target_url: str, model: str = "zai-glm-4.7"):
         self.api_key = api_key
         self.target_url = target_url
         self.model = model
