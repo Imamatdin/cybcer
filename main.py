@@ -4,6 +4,7 @@ import os
 import sys
 from rich.console import Console
 from orchestrator import CerebrasAttacker
+from blue_team import BlueTeamAnalyzer, print_blue_team_analysis
 from genome_analysis import SecurityGenomeAnalyzer, print_genome_analysis
 # Load .env file
 if os.path.exists(".env"):
@@ -80,6 +81,22 @@ def main():
             )
             
             print_genome_analysis(result)
+            # Run blue team analysis
+            console.print()
+            console.print("[bold blue]Running Blue Team Replay Analysis...[/bold blue]")
+            console.print()
+            
+            blue_analyzer = BlueTeamAnalyzer(
+                api_key=args.api_key,
+                model=args.model
+            )
+            
+            blue_result = blue_analyzer.analyze(
+                attack_log=attacker.state.attack_log,
+                state=attacker.state
+            )
+            
+            print_blue_team_analysis(blue_result)
             
     except KeyboardInterrupt:
         console.print("\n[yellow]Attack interrupted by user[/yellow]")
