@@ -7,6 +7,7 @@ from orchestrator import CerebrasAttacker
 from blue_team import BlueTeamAnalyzer, print_blue_team_analysis
 from attack_graph import AttackGraphGenerator, print_attack_graph
 from genome_analysis import SecurityGenomeAnalyzer, print_genome_analysis
+from benchmark import BenchmarkHarness, print_benchmark
 # Load .env file
 if os.path.exists(".env"):
     with open(".env") as f:
@@ -43,10 +44,16 @@ def main():
     )
     parser.add_argument(
         "--skip-genome",
+        
         action="store_true",
         help="Skip genome analysis after attack"
     )
-    
+    parser.add_argument(
+        "--benchmark",
+        action="store_true",
+        help="Run speed benchmark after attack"
+    )
+
     args = parser.parse_args()
     
     if not args.api_key:
@@ -114,6 +121,15 @@ def main():
             )
             
             print_attack_graph(graph_result)
+            # Run benchmark if requested
+            if args.benchmark:
+                console.print()
+                console.print("[bold magenta]Running Speed Benchmark...[/bold magenta]")
+                console.print()
+                
+                bench = BenchmarkHarness(api_key=args.api_key)
+                bench_results = bench.run_benchmark(num_runs=2)
+                print_benchmark(bench_results)
             
     except KeyboardInterrupt:
         console.print("\n[yellow]Attack interrupted by user[/yellow]")
