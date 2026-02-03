@@ -37,49 +37,48 @@ class CerebrasAttacker:
         self.tools = ToolExecutor()
         self.logger = AttackLogger()
         self.conversation_history = []
+        self.max_history = 10  # Keep only last 10 messages
         self.start_time = None
         
     def _call_cerebras(self, prompt: str) -> str:
         """Make a single Cerebras API call."""
         self.conversation_history.append({"role": "user", "content": prompt})
-        
-        try:
-            response = requests.post(
-                "https://api.cerebras.ai/v1/chat/completions",
-                headers={
-                    "Authorization": f"Bearer {self.api_key}",
-                    "Content-Type": "application/json"
-                },
-                json={
-                    "model": self.model,
-                    "messages": [
-                        {"role": "system", "content": SYSTEM_PROMPT},
-                        *self.conversation_history
-                    ],
-                    "max_tokens": 1024,
-                    "temperature": 0.7
-                },
-                timeout=30
-            )
-            
-            result = response.json()
-            
-            # Check for API errors
-            if "error" in result:
-                error_msg = result.get("error", {}).get("message", str(result))
-                raise Exception(f"API error: {error_msg}")
-            
-            if "choices" not in result or not result["choices"]:
-                raise Exception(f"Unexpected API response: {result}")
-            
-            assistant_message = result["choices"][0]["message"]["content"]
-            self.conversation_history.append({"role": "assistant", "content": assistant_message})
-            
-            return assistant_message
-        except requests.exceptions.Timeout:
-            raise Exception("API request timed out")
-        except requests.exceptions.RequestException as e:
-            raise Exception(f"API request failed: {e}")
+    
+        # Truncate history to prevent context overflow
+        if len(self.conversation_history) > self.max_history:
+            self.conversation_history = self.conversation_history[-self.max_history:]
+    
+        response = requests.post(
+            "https://api.cerebras.ai/v1/chat/completions",
+            headers={
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json"
+        },
+        json={
+            "model": self.model,
+            "messages": [
+                {"role": "system", "content": SYSTEM_PROMPT},
+                *self.conversation_history
+            ],
+            "max_tokens": 512,
+            "temperature": 0.7
+        }
+    )
+    
+        result = response.json()
+    
+        if "choices" not in result:
+            # Handle error gracefully
+            if "context_length_exceeded" in str(result):
+                # Clear history and retry
+                self.conversation_history = self.conversation_history[-4:]
+                return self._call_cerebras(prompt)
+            raise Exception(f"Unexpected API response: {result}")
+    
+        assistant_message = result["choices"][0]["message"]["content"]
+        self.conversation_history.append({"role": "assistant", "content": assistant_message})
+    
+        return assistant_message
     
     def _parse_action(self, response: str) -> tuple[str, dict] | None:
         """Extract tool call from LLM response."""

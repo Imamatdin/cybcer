@@ -2,12 +2,17 @@
 import argparse
 import os
 import sys
+import time
 from rich.console import Console
 from orchestrator import CerebrasAttacker
 from blue_team import BlueTeamAnalyzer, print_blue_team_analysis
 from attack_graph import AttackGraphGenerator, print_attack_graph
 from genome_analysis import SecurityGenomeAnalyzer, print_genome_analysis
 from benchmark import BenchmarkHarness, print_benchmark
+from json_export import generate_json_report, save_json_report, print_json_summary
+from executive_summary import generate_executive_summary, print_executive_summary
+
+
 # Load .env file
 if os.path.exists(".env"):
     with open(".env") as f:
@@ -53,6 +58,11 @@ def main():
         action="store_true",
         help="Run speed benchmark after attack"
     )
+    parser.add_argument(
+        "--json-output",
+        action="store_true",
+        help="Generate JSON report file"
+    )
 
     args = parser.parse_args()
     
@@ -72,6 +82,16 @@ def main():
         for event in attacker.run(max_steps=args.max_steps):
             pass  # Events are logged by AttackLogger
         
+        # Print executive summary first (right after attack)
+        from executive_summary import generate_executive_summary, print_executive_summary
+        exec_summary = generate_executive_summary(
+            state=attacker.state,
+            attack_time=time.time() - attacker.start_time if attacker.start_time else 10,
+            genome={},
+            benchmark=None
+        )
+        print_executive_summary(exec_summary)
+        
         # Run genome analysis if attack completed and not skipped
         if not args.skip_genome and attacker.state.attack_log:
             console.print()
@@ -89,6 +109,7 @@ def main():
             )
             
             print_genome_analysis(result)
+            
             # Run blue team analysis
             console.print()
             console.print("[bold blue]Running Blue Team Replay Analysis...[/bold blue]")
@@ -105,6 +126,7 @@ def main():
             )
             
             print_blue_team_analysis(blue_result)
+            
             # Run attack graph generation
             console.print()
             console.print("[bold yellow]Generating Attack Graph...[/bold yellow]")
@@ -121,6 +143,7 @@ def main():
             )
             
             print_attack_graph(graph_result)
+            
             # Run benchmark if requested
             if args.benchmark:
                 console.print()
@@ -130,6 +153,18 @@ def main():
                 bench = BenchmarkHarness(api_key=args.api_key)
                 bench_results = bench.run_benchmark(num_runs=2)
                 print_benchmark(bench_results)
+            
+            # Generate JSON report if requested
+            if args.json_output:
+                json_report = generate_json_report(
+                    state=attacker.state,
+                    genome=result,
+                    blue_team=blue_result,
+                    attack_graph=graph_result,
+                    benchmark=bench_results if args.benchmark else None
+                )
+                save_json_report(json_report)
+                print_json_summary(json_report)
             
     except KeyboardInterrupt:
         console.print("\n[yellow]Attack interrupted by user[/yellow]")
