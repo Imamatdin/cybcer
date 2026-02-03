@@ -63,8 +63,26 @@ def main():
         action="store_true",
         help="Generate JSON report file"
     )
+    parser.add_argument(
+        "--fail-on-critical",
+        action="store_true",
+        help="Exit with code 1 if critical findings found (for CI/CD)"
+    )
+    parser.add_argument(
+        "--allowed-hosts",
+        type=str,
+        default=None,
+        help="Comma-separated list of allowed target hosts (safety check)"
+    )
 
     args = parser.parse_args()
+    # Safety check: allowlist
+    if args.allowed_hosts:
+        allowed = [h.strip() for h in args.allowed_hosts.split(",")]
+        target_host = args.target.replace("http://", "").replace("https://", "").split("/")[0]
+        if target_host not in allowed:
+            console.print(f"[red]Error: Target {target_host} not in allowed hosts: {allowed}[/red]")
+            sys.exit(1)
     
     if not args.api_key:
         console.print("[red]Error: Cerebras API key required. Set CEREBRAS_API_KEY or use --api-key[/red]")
@@ -165,6 +183,10 @@ def main():
                 )
                 save_json_report(json_report)
                 print_json_summary(json_report)
+                # CI exit code
+            if args.fail_on_critical and attacker.state.loot:
+                console.print("[red]CI CHECK FAILED: Critical data exfiltration detected[/red]")
+                sys.exit(1)
             
     except KeyboardInterrupt:
         console.print("\n[yellow]Attack interrupted by user[/yellow]")
