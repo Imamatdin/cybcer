@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.env
+
+# Project specific
+vulnerable_app/uploads/*
+!vulnerable_app/uploads/.gitkeep
+vulnerable_app/backup/*
+!vulnerable_app/backup/.gitkeep
+cerebras-redteam.egg-info/
+dist/
+build/
+
+# IDEs
+.vscode/
+.idea/
