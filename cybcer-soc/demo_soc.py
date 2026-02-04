@@ -64,7 +64,7 @@ DEMO_EVENTS = [
 ]
 
 
-def run_soc_demo(bots_path: str = None, rate: int = 2000, window_size: int = 300,
+def run_soc_demo(bots_path: str = None, events_path: str = None, rate: int = 2000, window_size: int = 300,
                  output_dir: str = "artifacts", compare_gemini: bool = False) -> dict:
     """Run full SOC autopilot demo."""
     
@@ -109,13 +109,67 @@ def run_soc_demo(bots_path: str = None, rate: int = 2000, window_size: int = 300
     # ─────────────────────────────────────────────────────────────────────
     print("[1/6] Ingesting events...")
     ingest_start = time.time()
-    
-    if bots_path and Path(bots_path).exists():
+
+    # Data source diagnostics
+    print(f"[DATA] events_path={events_path!r}")
+    if events_path:
+        print(f"[DATA] exists={Path(events_path).exists()} size={Path(events_path).stat().st_size if Path(events_path).exists() else 'NA'}")
+    else:
+        print(f"[DATA] bots_path={bots_path!r} exists={Path(bots_path).exists() if bots_path else False}")
+
+    # Require a provided events_path or existing bots_path; fail loud otherwise
+    if events_path:
+        ep = Path(events_path)
+        if not ep.exists():
+            raise FileNotFoundError(f"events_path not found: {events_path}")
+
+        # Load JSONL or JSON list, map fields to canonical shape
+        raw = []
+        if ep.suffix == '.jsonl':
+            with open(ep, 'r', encoding='utf-8') as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    raw.append(json.loads(line))
+        else:
+            with open(ep, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                if isinstance(data, list):
+                    raw = data
+                else:
+                    raw = [data]
+
+        events = []
+        for e in raw:
+            # map common fields
+            ts = e.get('ts') or e.get('timestamp') or e.get('_time')
+            event_type = e.get('event_type') or e.get('sourcetype') or e.get('source')
+            dst_ip = e.get('dst_ip') or e.get('dest_ip') or e.get('dst')
+            src_ip = e.get('src_ip') or e.get('source_ip') or e.get('src')
+            host = e.get('host') or e.get('hostname')
+            user = e.get('user') or e.get('username')
+            message = e.get('message') or e.get('msg') or ''
+
+            ev = {
+                'ts': ts,
+                'event_type': event_type,
+                'host': host,
+                'src_ip': src_ip,
+                'dst_ip': dst_ip,
+                'user': user,
+                'severity': e.get('severity') or e.get('sev') or 'low',
+                'message': message,
+                'fields': e.get('fields', {})
+            }
+            events.append(CanonicalEvent.from_dict(ev))
+        print(f"      Loaded {len(events)} events from {events_path}")
+    else:
+        # require bots_path to exist
+        if not bots_path or not Path(bots_path).exists():
+            raise FileNotFoundError(f"No events_path provided and bots_path not found: {bots_path}")
         events = load_bots_folder(bots_path, limit=10000)
         print(f"      Loaded {len(events)} events from {bots_path}")
-    else:
-        print("      Using demo events (no BOTS data found)")
-        events = [CanonicalEvent.from_dict(e) for e in DEMO_EVENTS]
     
     bench["ingest_time_sec"] = round(time.time() - ingest_start, 3)
     bench["events_count"] = len(events)
@@ -410,15 +464,20 @@ def run_soc_demo(bots_path: str = None, rate: int = 2000, window_size: int = 300
 def main():
     parser = argparse.ArgumentParser(description="SOC Autopilot Demo")
     parser.add_argument("--bots_path", "-b", help="Path to BOTS export folder")
+    parser.add_argument("--events_path", help="Path to a single events JSON/JSONL file to use (overrides bots_path)")
     parser.add_argument("--rate", "-r", type=int, default=2000, help="Replay rate (events/sec)")
     parser.add_argument("--window_size", "-w", type=int, default=300, help="Window size for batching")
     parser.add_argument("--output_dir", "-o", default="artifacts", help="Output directory")
     parser.add_argument("--compare", "-c", action="store_true", help="Compare Cerebras vs Gemini")
     
     args = parser.parse_args()
+    # Data source banner
+    print(f"[DATA] args.events_path={args.events_path!r}")
+    print(f"[DATA] args.bots_path={args.bots_path!r} exists={Path(args.bots_path).exists() if args.bots_path else False}")
     
     run_soc_demo(
         bots_path=args.bots_path,
+        events_path=args.events_path,
         rate=args.rate,
         window_size=args.window_size,
         output_dir=args.output_dir,

@@ -168,12 +168,47 @@ async def api_state():
         return {"status": "error", "message": f"Failed to read ui_state.json: {e}"}
 
 
+from pydantic import BaseModel
+
+
+class StartRequest(BaseModel):
+    bots_path: str | None = None
+    events_path: str | None = None
+    scenario: str | None = None
+
+
 @app.post('/api/start')
-async def api_start(bots_path: str = 'cybcer-soc/data/bots'):
-    """Start a demo run in background and write initial ui_state.json with status=running."""
+async def api_start(req: StartRequest):
+    """Start a demo run in background and write initial ui_state.json with status=running.
+
+    Accepts either `events_path` (explicit file), `bots_path`, or high-level `scenario`.
+    Known scenarios: 'success', 'blocked', 'inconclusive'.
+    """
     import subprocess
     soc_dir = Path(__file__).parent / 'cybcer-soc'
-    cmd = [sys.executable, str(soc_dir / 'demo_soc.py'), '--bots_path', bots_path, '--output_dir', str(soc_dir / 'artifacts')]
+
+    # Resolve events_path from scenario if provided
+    events_path = None
+    if req.scenario:
+        name = req.scenario.lower()
+        mapping = {
+            'success': soc_dir / 'data' / 'events_success.json',
+            'blocked': soc_dir / 'data' / 'events_blocked.json',
+            'inconclusive': soc_dir / 'data' / 'events_inconclusive.json'
+        }
+        if name in mapping:
+            events_path = mapping[name]
+    # explicit events_path overrides scenario
+    if req.events_path:
+        events_path = Path(req.events_path)
+
+    # Build command
+    cmd = [sys.executable, str(soc_dir / 'demo_soc.py'), '--output_dir', str(soc_dir / 'artifacts')]
+    if events_path:
+        cmd += ['--events_path', str(events_path)]
+    elif req.bots_path:
+        cmd += ['--bots_path', req.bots_path]
+
     try:
         subprocess.Popen(cmd, cwd=str(soc_dir))
     except Exception as e:

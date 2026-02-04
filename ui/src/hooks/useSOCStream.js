@@ -24,14 +24,19 @@ export const useSOCStream = () => {
     }
   };
 
-  const startSOC = async (botsPath = 'cybcer-soc/data/bots') => {
+  const startSOC = async ({ botsPath = null, scenario = 'success', eventsPath = null } = {}) => {
     // clear previous
     setEvents([]);
     setResults(null);
     setStatus('running');
 
     try {
-      await fetch('http://localhost:5173/api/start', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ bots_path: botsPath }) });
+      const body = {};
+      if (eventsPath) body.events_path = eventsPath;
+      else if (botsPath) body.bots_path = botsPath;
+      else body.scenario = scenario;
+
+      await fetch('http://localhost:5173/api/start', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     } catch (e) {
       console.error('Failed to POST /api/start', e);
     }

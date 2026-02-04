@@ -5,7 +5,7 @@ function SOCDashboard({ events, status, results, onStart, onReset }) {
 
   const handleStart = (e) => {
     e.preventDefault();
-    onStart(botsPath);
+    onStart({ botsPath });
   };
 
   // IDLE STATE - Launch Screen
