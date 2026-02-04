@@ -17,6 +17,10 @@ cerebras-redteam.egg-info/
 dist/
 build/
 
+# Runtime artifacts
+cybcer-soc/artifacts/
+vulnerable_app/logs/
+
 # IDEs
 .vscode/
 .idea/
