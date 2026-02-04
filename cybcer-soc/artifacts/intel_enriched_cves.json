@@ -1,0 +1,20 @@
+[
+  {
+    "cve": "CVE-2021-44228",
+    "in_kev": true,
+    "epss_score": 0.94358,
+    "epss_percentile": 0.9996
+  },
+  {
+    "cve": "CVE-2021-45046",
+    "in_kev": true,
+    "epss_score": 0.9434,
+    "epss_percentile": 0.99955
+  },
+  {
+    "cve": "CVE-2021-45105",
+    "in_kev": false,
+    "epss_score": 0.65644,
+    "epss_percentile": 0.98459
+  }
+]

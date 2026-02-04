@@ -1,0 +1,39 @@
+[
+  {
+    "service": "api-gateway",
+    "component": "log4j-core",
+    "version": "2.14.0",
+    "cves": [
+      "CVE-2021-44228"
+    ],
+    "exposure": "internet-facing"
+  },
+  {
+    "service": "search-service",
+    "component": "log4j-core",
+    "version": "2.14.1",
+    "cves": [
+      "CVE-2021-44228",
+      "CVE-2021-45046"
+    ],
+    "exposure": "internal"
+  },
+  {
+    "service": "payment-processor",
+    "component": "log4j-core",
+    "version": "2.12.1",
+    "cves": [
+      "CVE-2021-44228"
+    ],
+    "exposure": "internal"
+  },
+  {
+    "service": "logging-aggregator",
+    "component": "log4j-core",
+    "version": "2.10.0",
+    "cves": [
+      "CVE-2021-44228"
+    ],
+    "exposure": "isolated"
+  }
+]

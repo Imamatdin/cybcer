@@ -1,0 +1,197 @@
+{
+  "case_id": "CASE-20260204-001",
+  "summary": "Potential Log4Shell exploitation targeting internal search and API services, evidenced by suspicious HTTP requests to /api/search followed by PowerShell execution and lateral movement via Kerberos authentication.",
+  "confidence": 0.9,
+  "timeline": [
+    {
+      "ts": "2024-01-15T10:00:04Z",
+      "event": "auth success user=\"svc-ci\" method=kerberos",
+      "evidence_id": "E0001"
+    },
+    {
+      "ts": "2024-01-15T10:00:36Z",
+      "event": "edr file_read proc=\"powershell\"",
+      "evidence_id": "E0005"
+    },
+    {
+      "ts": "2024-01-15T10:02:20Z",
+      "event": "DELETE /api/search status=200 ua=\"okhttp/4.11\"",
+      "evidence_id": "E0014"
+    },
+    {
+      "ts": "2024-01-15T10:05:08Z",
+      "event": "PUT /login status=200 ua=\"python-requests/2.31\"",
+      "evidence_id": "E0027"
+    },
+    {
+      "ts": "2024-01-15T10:05:40Z",
+      "event": "edr process_start proc=\"powershell\"",
+      "evidence_id": "E0031"
+    }
+  ],
+  "key_entities": {
+    "hosts": [
+      "web-srv-01",
+      "jumpbox-01",
+      "dc-01",
+      "app-srv-02"
+    ],
+    "users": [
+      "admin",
+      "svc-ci",
+      "alice",
+      "charlie",
+      "svc-backend"
+    ],
+    "ips": [
+      "203.0.113.50",
+      "93.184.216.34",
+      "10.0.8.31",
+      "10.0.1.20"
+    ]
+  },
+  "evidence": [
+    {
+      "id": "E0014",
+      "excerpt": "DELETE /api/search status=200 ua=\"okhttp/4.11\"",
+      "reason": "Correlates with the vulnerable 'search-service' identified in the patch plan; DELETE requests to search endpoints are a common Log4Shell exploitation vector."
+    },
+    {
+      "id": "E0005",
+      "excerpt": "edr file_read proc=\"powershell\"",
+      "reason": "Indicates potential reconnaissance or data staging using a command-line interface frequently used post-exploitation."
+    },
+    {
+      "id": "E0027",
+      "excerpt": "PUT /login status=200 ua=\"python-requests/2.31\"",
+      "reason": "Automated tool usage targeting a login endpoint suggests brute-forcing or session hijacking attempts following initial access."
+    },
+    {
+      "id": "E0031",
+      "excerpt": "edr process_start proc=\"powershell\"",
+      "reason": "Execution of PowerShell suggests the attacker has achieved code execution (RCE) and is attempting to maintain access or move laterally."
+    }
+  ],
+  "attack_mapping": [
+    {
+      "framework": "MITRE ATT&CK",
+      "technique": "T1190 - Exploit Public-Facing Application",
+      "rationale": "The timeline shows a DELETE request to /api/search matching the vulnerable search-service component (Log4j), indicating an exploit attempt."
+    },
+    {
+      "framework": "MITRE ATT&CK",
+      "technique": "T1059.001 - Command and Scripting Interpreter: PowerShell",
+      "rationale": "Multiple EDR events detect PowerShell file reads and process starts, indicative of execution commands."
+    },
+    {
+      "framework": "MITRE ATT&CK",
+      "technique": "T1078 - Valid Accounts",
+      "rationale": "A high volume of successful Kerberos authentications for multiple users (svc-ci, admin, alice) suggests credential theft or use of valid accounts for lateral movement."
+    }
+  ],
+  "containment_steps": [
+    {
+      "action": "Isolate hosts web-srv-01 and app-srv-02 from the network",
+      "why": "These hosts are identified as running vulnerable Log4j versions and are likely the entry point or target of the attack.",
+      "risk": "high"
+    },
+    {
+      "action": "Block external IP 203.0.113.50 at the perimeter firewall",
+      "why": "This IP appears in the source list and may be the command and control (C2) server or attack origin.",
+      "risk": "low"
+    },
+    {
+      "action": "Disable the svc-ci and admin service accounts temporarily",
+      "why": "These accounts show suspicious activity patterns and may be compromised.",
+      "risk": "med"
+    }
+  ],
+  "remediation_steps": [
+    {
+      "action": "Apply Log4j patches to search-service, api-gateway, payment-processor, and logging-aggregator",
+      "why": "To remediate the CVE-2021-44228 and CVE-2021-45046 vulnerabilities allowing remote code execution.",
+      "owner": "devops"
+    },
+    {
+      "action": "Force reset passwords for all users showing auth activity in the timeline (admin, alice, charlie, svc-ci)",
+      "why": "To invalidate any stolen credentials used for lateral movement.",
+      "owner": "secops"
+    },
+    {
+      "action": "Review and restrict PowerShell usage policies on jumpbox-01 and web-srv-01",
+      "why": "PowerShell was used for suspicious activity; constraining it reduces the attack surface.",
+      "owner": "secops"
+    }
+  ],
+  "log4shell_patch_plan": [
+    {
+      "service": "search-service",
+      "host": "app-srv-02",
+      "component": "log4j-core",
+      "version": "2.14.1",
+      "cves": [
+        "CVE-2021-44228",
+        "CVE-2021-45046"
+      ],
+      "exposure": "internal",
+      "criticality": "high",
+      "priority_score": 192.61,
+      "urgency": "immediate",
+      "kev_flagged": true,
+      "max_epss": 0.9436,
+      "rationale": "KEV=True, EPSS=94.36%, internal",
+      "priority": 1
+    },
+    {
+      "service": "api-gateway",
+      "host": "web-srv-01",
+      "component": "log4j-core",
+      "version": "2.14.0",
+      "cves": [
+        "CVE-2021-44228"
+      ],
+      "exposure": "internet-facing",
+      "criticality": "critical",
+      "priority_score": 158.31,
+      "urgency": "immediate",
+      "kev_flagged": true,
+      "max_epss": 0.9436,
+      "rationale": "KEV=True, EPSS=94.36%, internet-facing",
+      "priority": 2
+    },
+    {
+      "service": "payment-processor",
+      "host": "app-srv-03",
+      "component": "log4j-core",
+      "version": "2.12.1",
+      "cves": [
+        "CVE-2021-44228"
+      ],
+      "exposure": "internal",
+      "criticality": "critical",
+      "priority_score": 126.31,
+      "urgency": "immediate",
+      "kev_flagged": true,
+      "max_epss": 0.9436,
+      "rationale": "KEV=True, EPSS=94.36%, internal",
+      "priority": 3
+    },
+    {
+      "service": "logging-aggregator",
+      "host": "log-srv-01",
+      "component": "log4j-core",
+      "version": "2.10.0",
+      "cves": [
+        "CVE-2021-44228"
+      ],
+      "exposure": "isolated",
+      "criticality": "medium",
+      "priority_score": 94.31,
+      "urgency": "immediate",
+      "kev_flagged": true,
+      "max_epss": 0.9436,
+      "rationale": "KEV=True, EPSS=94.36%, isolated",
+      "priority": 4
+    }
+  ]
+}

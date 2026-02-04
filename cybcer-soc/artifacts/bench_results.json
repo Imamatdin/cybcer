@@ -1,0 +1,22 @@
+{
+  "start_time": "2026-02-04T07:35:36.922903",
+  "config": {
+    "bots_path": "data/bots",
+    "rate": 2000,
+    "window_size": 300
+  },
+  "ingest_time_sec": 0.007,
+  "events_count": 924,
+  "case_build_time_sec": 0.003,
+  "enrich_time_sec": 0.014,
+  "patch_plan_time_sec": 0.01,
+  "cerebras_time_sec": 9.398,
+  "cerebras_tokens_out": 4163,
+  "cerebras_tokens_per_sec": 443.0,
+  "gemini_time_sec": 19.943,
+  "speedup_vs_gemini": 2.12,
+  "total_runtime_sec": 29.405,
+  "events_per_sec": 132000.0,
+  "time_to_first_brief_sec": 9.398,
+  "time_to_full_report_sec": 29.405
+}

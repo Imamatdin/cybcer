@@ -1,0 +1,71 @@
+[
+  {
+    "service": "search-service",
+    "host": "app-srv-02",
+    "component": "log4j-core",
+    "version": "2.14.1",
+    "cves": [
+      "CVE-2021-44228",
+      "CVE-2021-45046"
+    ],
+    "exposure": "internal",
+    "criticality": "high",
+    "priority_score": 192.61,
+    "urgency": "immediate",
+    "kev_flagged": true,
+    "max_epss": 0.9436,
+    "rationale": "KEV=True, EPSS=94.36%, internal",
+    "priority": 1
+  },
+  {
+    "service": "api-gateway",
+    "host": "web-srv-01",
+    "component": "log4j-core",
+    "version": "2.14.0",
+    "cves": [
+      "CVE-2021-44228"
+    ],
+    "exposure": "internet-facing",
+    "criticality": "critical",
+    "priority_score": 158.31,
+    "urgency": "immediate",
+    "kev_flagged": true,
+    "max_epss": 0.9436,
+    "rationale": "KEV=True, EPSS=94.36%, internet-facing",
+    "priority": 2
+  },
+  {
+    "service": "payment-processor",
+    "host": "app-srv-03",
+    "component": "log4j-core",
+    "version": "2.12.1",
+    "cves": [
+      "CVE-2021-44228"
+    ],
+    "exposure": "internal",
+    "criticality": "critical",
+    "priority_score": 126.31,
+    "urgency": "immediate",
+    "kev_flagged": true,
+    "max_epss": 0.9436,
+    "rationale": "KEV=True, EPSS=94.36%, internal",
+    "priority": 3
+  },
+  {
+    "service": "logging-aggregator",
+    "host": "log-srv-01",
+    "component": "log4j-core",
+    "version": "2.10.0",
+    "cves": [
+      "CVE-2021-44228"
+    ],
+    "exposure": "isolated",
+    "criticality": "medium",
+    "priority_score": 94.31,
+    "urgency": "immediate",
+    "kev_flagged": true,
+    "max_epss": 0.9436,
+    "rationale": "KEV=True, EPSS=94.36%, isolated",
+    "priority": 4
+  }
+]
