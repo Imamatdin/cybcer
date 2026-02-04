@@ -245,6 +245,117 @@ def run_soc_demo(bots_path: str = None, rate: int = 2000, window_size: int = 300
         json.dump(bench, f, indent=2)
     print(f"      Wrote {bench_path}")
     print()
+
+    # Write ui_state periodically / at end so frontend can read a single source of truth
+    def build_ui_state(status="running"):
+        # Basic metrics
+        metrics = {
+            "events_total": bench.get("events_count", 0),
+            "events_per_sec": bench.get("events_per_sec", 0),
+            "tokens_per_sec": bench.get("cerebras_tokens_per_sec", 0),
+            "time_to_first_brief_sec": bench.get("time_to_first_brief_sec", 0),
+            "time_to_full_report_sec": bench.get("time_to_full_report_sec", 0),
+            "total_runtime_sec": bench.get("total_runtime_sec", 0),
+        }
+
+        # Red signals & recent events fallback
+        recent = []
+        for e in events[:10]:
+            recent.append({
+                "ts": getattr(e, 'ts', e.get('ts') if isinstance(e, dict) else None) or str(datetime.utcnow().isoformat()),
+                "type": getattr(e, 'event_type', e.get('event_type') if isinstance(e, dict) else 'web'),
+                "msg": getattr(e, 'message', e.get('message') if isinstance(e, dict) else ''),
+                "sev": getattr(e, 'severity', e.get('severity') if isinstance(e, dict) else 'low')
+            })
+
+        # Red stage heuristic
+        def detect_stage(evts):
+            types = " ".join([str(getattr(x, 'event_type', x.get('event_type') if isinstance(x, dict) else '')) for x in evts])
+            msgs = " ".join([str(getattr(x, 'message', x.get('message') if isinstance(x, dict) else '')) for x in evts])
+            if 'ldap' in msgs or 'LDAP' in msgs or 'ldap' in types:
+                return 'ldap_egress'
+            if 'dns' in types or 'DNS' in msgs:
+                return 'dns_callbacks'
+            if 'EDR' in msgs or 'child' in msgs or 'process' in types:
+                return 'edr_anomaly'
+            if 'outbound' in msgs or 'transfer' in msgs or 'bytes' in msgs:
+                return 'exfil_suspected'
+            if 'auth' in types or 'privilege' in msgs or 'sudo' in msgs:
+                return 'lateral_auth'
+            return 'complete'
+
+        red = {
+            "stage": detect_stage(events),
+            "score": 0.0,
+            "signals": [],
+            "recent_events": recent,
+        }
+
+        # Blue fallbacks
+        hosts = list(case.hosts) if case else []
+        ips = list(case.src_ips) + list(case.dst_ips) if case else []
+        users = list(case.users) if case else []
+
+        attack_mapping = []
+        if red['stage'] == 'dns_callbacks':
+            attack_mapping.append({"technique": "DNS callback", "rationale": "DNS queries to suspicious domains"})
+        elif red['stage'] == 'ldap_egress':
+            attack_mapping.append({"technique": "LDAP egress via JNDI", "rationale": "Outbound LDAP observed"})
+        elif red['stage'] == 'edr_anomaly':
+            attack_mapping.append({"technique": "Process anomaly", "rationale": "Unexpected child process / remote class load"})
+        elif red['stage'] == 'exfil_suspected':
+            attack_mapping.append({"technique": "Exfiltration", "rationale": "Large outbound transfer detected"})
+        elif red['stage'] == 'lateral_auth':
+            attack_mapping.append({"technique": "Lateral movement via auth", "rationale": "Authentication anomalies detected"})
+        else:
+            attack_mapping.append({"technique": "Unknown", "rationale": "Stage complete or insufficient signals"})
+
+        patch_priority = []
+        # If patch_plan exists, use it, otherwise fallback sample
+        try:
+            for p in patch_plan if isinstance(patch_plan, list) else []:
+                patch_priority.append({
+                    "service": p.get('service') if isinstance(p, dict) else getattr(p, 'service', str(p)),
+                    "priority": p.get('priority', 2) if isinstance(p, dict) else getattr(p, 'priority', 2),
+                    "why": p.get('rationale', '') if isinstance(p, dict) else getattr(p, 'rationale', ''),
+                    "kev": True if 'CVE' in str(p.get('rationale', '')) else False,
+                    "epss": 0.0
+                })
+        except Exception:
+            patch_priority = []
+
+        if not patch_priority:
+            patch_priority = [{"service": "log4j", "priority": 1, "why": "KEV/EPSS high", "kev": True, "epss": 0.9}]
+
+        blue = {
+            "case_id": case_id,
+            "severity": "high",
+            "summary": (brief_result.get('brief', {}).get('summary') if isinstance(brief_result, dict) else '') or "Awaiting brief...",
+            "key_entities": {"hosts": hosts, "ips": ips, "users": users},
+            "attack_mapping": attack_mapping,
+            "containment": [{"action": "isolate host", "why": "suspected compromise"}],
+            "patch_priority": patch_priority,
+            "timeline": [{"ts": t["ts"], "event": t["event"]} for t in (case.timeline[:20] if case and getattr(case, 'timeline', None) else [])]
+        }
+
+        ui = {
+            "run_id": datetime.utcnow().isoformat() + "Z",
+            "status": status,
+            "metrics": metrics,
+            "red": red,
+            "blue": blue
+        }
+
+        return ui
+
+    # write ui_state final
+    ui_state_path = artifacts_dir / "ui_state.json"
+    try:
+        with open(ui_state_path, "w") as f:
+            json.dump(build_ui_state(status="running"), f, indent=2)
+        print(f"      Wrote {ui_state_path}")
+    except Exception as e:
+        print(f"Failed to write ui_state: {e}")
     
     # ─────────────────────────────────────────────────────────────────────
     # Summary

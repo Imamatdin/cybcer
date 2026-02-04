@@ -1,0 +1,542 @@
+/* Base styles - keep your existing App.css and ADD these */
+
+/* Mode Toggle */
+.mode-toggle {
+  display: flex;
+  justify-content: center;
+  gap: 0;
+  padding: 1rem;
+  position: fixed;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 100;
+  background: rgba(0, 0, 0, 0.9);
+  border-bottom: 1px solid #333;
+}
+
+.mode-btn {
+  padding: 0.6rem 1.5rem;
+  font-size: 0.9rem;
+  font-weight: bold;
+  border: 1px solid #333;
+  background: #111;
+  color: #666;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-family: 'Courier New', monospace;
+}
+
+.mode-btn:first-child {
+  border-radius: 4px 0 0 4px;
+}
+
+.mode-btn:last-child {
+  border-radius: 0 4px 4px 0;
+  border-left: none;
+}
+
+.mode-btn:hover {
+  color: #fff;
+}
+
+.mode-btn.active {
+  background: #0ff;
+  color: #000;
+  border-color: #0ff;
+}
+
+/* SOC Container */
+.soc-container {
+  padding: 4rem 1rem 2rem;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+/* SOC Launch Screen */
+.soc-launch {
+  max-width: 700px;
+  margin: 0 auto;
+}
+
+.soc-header {
+  text-align: center;
+  margin-bottom: 2rem;
+}
+
+.soc-header h1 {
+  font-size: 2.5rem;
+  color: #0ff;
+  margin: 0;
+  text-shadow: 0 0 20px rgba(0, 255, 255, 0.5);
+}
+
+.soc-subtitle {
+  color: #666;
+  margin-top: 0.5rem;
+}
+
+.soc-stats-preview {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1rem;
+  margin-bottom: 2rem;
+}
+
+.stat-box {
+  text-align: center;
+  padding: 1rem;
+  background: rgba(0, 255, 255, 0.05);
+  border: 1px solid #333;
+}
+
+.stat-box.highlight {
+  border-color: #0ff;
+  background: rgba(0, 255, 255, 0.1);
+}
+
+.stat-value {
+  display: block;
+  font-size: 1.8rem;
+  color: #0ff;
+  font-weight: bold;
+  font-family: 'Courier New', monospace;
+}
+
+.stat-label {
+  display: block;
+  font-size: 0.7rem;
+  color: #666;
+  text-transform: uppercase;
+  margin-top: 0.25rem;
+}
+
+.soc-form {
+  margin-bottom: 2rem;
+}
+
+.input-row {
+  display: flex;
+  gap: 0;
+}
+
+.input-row input {
+  flex: 1;
+  padding: 1rem;
+  background: #111;
+  border: 1px solid #333;
+  color: #fff;
+  font-family: 'Courier New', monospace;
+  font-size: 1rem;
+  border-radius: 4px 0 0 4px;
+}
+
+.input-row input:focus {
+  outline: none;
+  border-color: #0ff;
+}
+
+.start-btn {
+  padding: 1rem 2rem;
+  background: #0ff;
+  border: none;
+  color: #000;
+  font-weight: bold;
+  font-size: 1rem;
+  cursor: pointer;
+  border-radius: 0 4px 4px 0;
+  transition: all 0.2s;
+}
+
+.start-btn:hover {
+  background: #fff;
+  box-shadow: 0 0 20px rgba(0, 255, 255, 0.5);
+}
+
+.soc-pipeline {
+  border-top: 1px solid #333;
+  padding-top: 1.5rem;
+}
+
+.soc-pipeline h3 {
+  color: #666;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  margin-bottom: 1rem;
+  text-align: center;
+}
+
+.pipeline-steps {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.pipeline-step {
+  padding: 0.5rem 0.75rem;
+  background: #111;
+  border: 1px solid #333;
+  font-size: 0.85rem;
+  color: #888;
+}
+
+.pipeline-arrow {
+  color: #333;
+}
+
+/* SOC Progress */
+.soc-progress {
+  max-width: 700px;
+  margin: 0 auto;
+}
+
+.progress-steps {
+  display: flex;
+  justify-content: space-between;
+  margin: 2rem 0;
+  padding: 1rem;
+  background: rgba(0, 0, 0, 0.5);
+  border: 1px solid #333;
+}
+
+.progress-step {
+  text-align: center;
+  opacity: 0.3;
+  position: relative;
+  padding: 0.5rem;
+}
+
+.progress-step.active {
+  opacity: 1;
+}
+
+.progress-step.done {
+  opacity: 0.7;
+}
+
+.step-icon {
+  font-size: 2rem;
+}
+
+.step-name {
+  font-size: 0.75rem;
+  color: #888;
+  margin-top: 0.25rem;
+}
+
+.step-spinner {
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 30px;
+  height: 3px;
+  background: linear-gradient(90deg, transparent, #0ff, transparent);
+  animation: shimmer 1s infinite;
+}
+
+@keyframes shimmer {
+  0% { opacity: 0.3; }
+  50% { opacity: 1; }
+  100% { opacity: 0.3; }
+}
+
+.step-check {
+  color: #0f0;
+  position: absolute;
+  top: 0;
+  right: 0;
+  font-size: 0.8rem;
+}
+
+.live-metrics {
+  display: flex;
+  justify-content: center;
+  gap: 2rem;
+  margin-bottom: 2rem;
+}
+
+.metric {
+  text-align: center;
+}
+
+.metric-value {
+  display: block;
+  font-size: 2rem;
+  color: #0ff;
+  font-family: 'Courier New', monospace;
+}
+
+.metric-label {
+  font-size: 0.7rem;
+  color: #666;
+  text-transform: uppercase;
+}
+
+.event-log {
+  background: #0a0a0a;
+  border: 1px solid #222;
+  padding: 1rem;
+  font-family: 'Courier New', monospace;
+  font-size: 0.85rem;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.log-entry {
+  padding: 0.25rem 0;
+  color: #666;
+}
+
+.log-entry.status {
+  color: #0ff;
+}
+
+.log-entry.progress {
+  color: #0f0;
+}
+
+.log-entry.error {
+  color: #f00;
+}
+
+/* SOC Results */
+.soc-results {
+  max-width: 1100px;
+  margin: 0 auto;
+}
+
+.speed-banner {
+  display: flex;
+  justify-content: center;
+  gap: 2rem;
+  padding: 1.5rem;
+  background: linear-gradient(180deg, rgba(0, 255, 255, 0.1), transparent);
+  border: 1px solid #0ff;
+  margin-bottom: 2rem;
+}
+
+.speed-stat {
+  text-align: center;
+}
+
+.speed-stat.main {
+  transform: scale(1.3);
+}
+
+.speed-value {
+  display: block;
+  font-size: 2rem;
+  color: #0ff;
+  font-weight: bold;
+  font-family: 'Courier New', monospace;
+}
+
+.speed-label {
+  font-size: 0.65rem;
+  color: #888;
+  text-transform: uppercase;
+}
+
+.results-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+  gap: 1rem;
+}
+
+.result-card {
+  background: rgba(0, 0, 0, 0.6);
+  border: 1px solid #333;
+  padding: 1rem;
+}
+
+.result-card h2 {
+  color: #0ff;
+  font-size: 1rem;
+  margin: 0 0 1rem 0;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid #333;
+}
+
+.case-id {
+  font-family: 'Courier New', monospace;
+  color: #ff0;
+  font-size: 1.1rem;
+  margin-bottom: 0.5rem;
+}
+
+.summary-text {
+  color: #ccc;
+  line-height: 1.5;
+  margin: 0;
+}
+
+.confidence {
+  margin-top: 1rem;
+  font-size: 0.85rem;
+  color: #888;
+}
+
+.confidence-bar {
+  height: 4px;
+  background: #333;
+  margin-top: 0.25rem;
+}
+
+.confidence-fill {
+  height: 100%;
+  background: #0ff;
+}
+
+.entities-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1rem;
+}
+
+.entity-col h4 {
+  color: #888;
+  font-size: 0.75rem;
+  margin: 0 0 0.5rem 0;
+  text-transform: uppercase;
+}
+
+.entity-item {
+  font-family: 'Courier New', monospace;
+  font-size: 0.8rem;
+  color: #0f0;
+  padding: 0.15rem 0;
+}
+
+.attack-item, .containment-item {
+  margin-bottom: 0.75rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid #222;
+}
+
+.attack-item:last-child, .containment-item:last-child {
+  border-bottom: none;
+  margin-bottom: 0;
+  padding-bottom: 0;
+}
+
+.technique, .action {
+  display: block;
+  color: #ff0;
+  font-weight: bold;
+  font-size: 0.9rem;
+}
+
+.rationale, .why {
+  display: block;
+  color: #888;
+  font-size: 0.8rem;
+  margin-top: 0.25rem;
+}
+
+.patch-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.patch-table th {
+  text-align: left;
+  color: #666;
+  font-weight: normal;
+  padding: 0.5rem;
+  border-bottom: 1px solid #333;
+}
+
+.patch-table td {
+  padding: 0.5rem;
+  color: #ccc;
+  border-bottom: 1px solid #222;
+}
+
+.urgency {
+  padding: 0.15rem 0.5rem;
+  font-size: 0.7rem;
+  font-weight: bold;
+  text-transform: uppercase;
+}
+
+.urgency.immediate {
+  background: #f00;
+  color: #fff;
+}
+
+.urgency-24h {
+  background: #f80;
+  color: #fff;
+}
+
+.urgency-7d {
+  background: #ff0;
+  color: #000;
+}
+
+.urgency-30d {
+  background: #666;
+  color: #fff;
+}
+
+.timeline-list {
+  max-height: 180px;
+  overflow-y: auto;
+}
+
+.timeline-item {
+  display: flex;
+  gap: 1rem;
+  padding: 0.4rem 0;
+  border-bottom: 1px solid #222;
+  font-size: 0.85rem;
+}
+
+.timeline-item .ts {
+  color: #666;
+  font-family: 'Courier New', monospace;
+  min-width: 70px;
+}
+
+.timeline-item .event {
+  color: #ccc;
+}
+
+.results-footer {
+  text-align: center;
+  margin-top: 2rem;
+}
+
+.reset-btn {
+  padding: 0.75rem 2rem;
+  background: transparent;
+  border: 1px solid #666;
+  color: #888;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.reset-btn:hover {
+  border-color: #0ff;
+  color: #0ff;
+}
+
+/* Error State */
+.soc-error {
+  text-align: center;
+  padding: 4rem;
+}
+
+.soc-error h1 {
+  color: #f00;
+}
+
+.soc-error p {
+  color: #888;
+  margin: 1rem 0 2rem;
+}
