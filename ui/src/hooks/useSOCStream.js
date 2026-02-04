@@ -12,15 +12,27 @@ export const useSOCStream = () => {
       if (!res.ok) throw new Error('Fetch failed');
       const data = await res.json();
       // Update status and results
-      setStatus(data.status || 'idle');
+      const newStatus = data.status || 'idle';
+      setStatus(newStatus);
       setResults(prev => ({ ...prev, ...data }));
       // Keep recent events always populated
       if (data.red && Array.isArray(data.red.recent_events)) {
         setEvents(data.red.recent_events);
       }
+      // Stop polling when done or error
+      if (newStatus === 'done' || newStatus === 'error') {
+        if (pollRef.current) {
+          clearInterval(pollRef.current);
+          pollRef.current = null;
+        }
+      }
     } catch (e) {
       console.error('Failed to fetch /api/state', e);
       setStatus('error');
+      if (pollRef.current) {
+        clearInterval(pollRef.current);
+        pollRef.current = null;
+      }
     }
   };
 

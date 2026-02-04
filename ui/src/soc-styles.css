@@ -308,6 +308,29 @@
   margin: 0 auto;
 }
 
+/* Result Banner */
+.result-banner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  padding: 1rem 2rem;
+  margin-bottom: 1.5rem;
+  font-size: 1.2rem;
+  font-weight: bold;
+  color: #fff;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
+.result-icon {
+  font-size: 1.5rem;
+}
+
+.result-text {
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
 .speed-banner {
   display: flex;
   justify-content: center;
