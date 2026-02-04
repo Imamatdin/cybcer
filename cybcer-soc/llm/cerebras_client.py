@@ -15,7 +15,7 @@ import httpx
 load_dotenv()
 
 # Client setup with explicit timeouts
-CEREBRAS_TIMEOUT = 15.0  # seconds
+CEREBRAS_TIMEOUT = 30.0  # seconds
 GEMINI_TIMEOUT = 12.0    # seconds - stricter for baseline
 
 cerebras_client = OpenAI(
@@ -30,7 +30,7 @@ gemini_client = OpenAI(
     timeout=httpx.Timeout(GEMINI_TIMEOUT, connect=5.0)
 )
 
-CEREBRAS_MODEL = "llama-4-scout-17b-16e-instruct"
+CEREBRAS_MODEL = "zai-glm-4.7"
 GEMINI_MODEL = "gemini-2.0-flash"
 
 # Token limits - SPEED FIRST
@@ -81,7 +81,7 @@ Generate the incident brief JSON:"""
 
 
 def generate_incident_brief(case_data: dict, cve_intel: list, patch_plan: list,
-                            provider: str = "cerebras", max_retries: int = 1) -> dict:
+                            provider: str = "cerebras", max_retries: int = 3) -> dict:
     """Generate incident brief using LLM.
 
     SPEED-OPTIMIZED:
@@ -122,6 +122,9 @@ def generate_incident_brief(case_data: dict, cve_intel: list, patch_plan: list,
             elapsed = time.time() - start
             content = response.choices[0].message.content
 
+            if not content:
+                raise ValueError("Model returned empty content")
+
             # Parse JSON
             if "```json" in content:
                 content = content.split("```json")[1].split("```")[0]
@@ -133,6 +136,9 @@ def generate_incident_brief(case_data: dict, cve_intel: list, patch_plan: list,
             usage = response.usage
             tokens_in = usage.prompt_tokens if usage else 0
             tokens_out = usage.completion_tokens if usage else 0
+            # zai-glm-4.7 doesn't populate completion_tokens — estimate from output
+            if tokens_out == 0:
+                tokens_out = max(1, len(content) // 4)
 
             return {
                 "brief": brief,
@@ -160,8 +166,11 @@ def generate_incident_brief(case_data: dict, cve_intel: list, patch_plan: list,
             }
 
         except httpx.TimeoutException as e:
+            if attempt < max_retries:
+                print(f"[{provider}] Timeout after {CEREBRAS_TIMEOUT if is_cerebras else GEMINI_TIMEOUT}s, retrying...")
+                continue
             return {
-                "error": f"Timeout after {GEMINI_TIMEOUT if not is_cerebras else CEREBRAS_TIMEOUT}s",
+                "error": f"Timeout after {CEREBRAS_TIMEOUT if is_cerebras else GEMINI_TIMEOUT}s (all retries exhausted)",
                 "provider": provider,
                 "model": model,
                 "ok": False,
@@ -171,19 +180,24 @@ def generate_incident_brief(case_data: dict, cve_intel: list, patch_plan: list,
 
         except Exception as e:
             error_msg = str(e)
-            # Don't retry on auth/quota errors
-            if "401" in error_msg or "403" in error_msg or "quota" in error_msg.lower():
+            # Auth errors are permanent — bail immediately
+            if "401" in error_msg or "403" in error_msg:
                 return {
                     "error": error_msg,
                     "provider": provider,
                     "model": model,
                     "ok": False,
                     "generation_time_sec": round(time.time() - call_start, 3),
-                    "error_type": "auth_or_quota"
+                    "error_type": "auth"
                 }
 
             if attempt < max_retries:
-                print(f"[{provider}] LLM call failed, retrying... ({e})")
+                # Rate-limit: back off before retrying
+                if "too_many_requests" in error_msg.lower() or "quota" in error_msg.lower() or "429" in error_msg:
+                    print(f"[{provider}] Rate-limited, waiting 3s before retry {attempt + 1}/{max_retries}...")
+                    time.sleep(3)
+                else:
+                    print(f"[{provider}] LLM call failed, retrying... ({e})")
                 continue
             return {
                 "error": error_msg,

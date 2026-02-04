@@ -6,25 +6,40 @@ import SOCDashboard from './components/SOCDashboard';
 import { useAttackStream } from './hooks/useAttackStream';
 import { useSOCStream } from './hooks/useSOCStream';
 import './App.css';
-import './soc-styles.css';  // Add after App.css import
+import './soc-styles.css';
 
 function App() {
-  const [mode, setMode] = useState('soc'); // 'red' or 'soc'
+  const [mode, setMode] = useState('red');
   const [targetUrl, setTargetUrl] = useState('');
-  
-  // Red team hook
-  const { events: redEvents, status: redStatus, results: redResults, startAttack, stopAttack } = useAttackStream(targetUrl);
-  
   // SOC hook
   const { events: socEvents, status: socStatus, results: socResults, startSOC, resetSOC } = useSOCStream();
+
+  // Callback when red team fails/aborts - switch to SOC
+  const handleFallbackToSOC = () => {
+    console.log('Red team failed/aborted, switching to SOC mode...');
+    setMode('soc');
+    // Auto-start SOC analysis
+    startSOC({ scenario: 'success' });
+  };
+
+  // Red team hook with fallback
+  const { 
+    events: redEvents, 
+    status: redStatus, 
+    results: redResults, 
+    startAttack, 
+    stopAttack 
+  } = useAttackStream(targetUrl, handleFallbackToSOC);
 
   const handleStartRed = (url) => {
     setTargetUrl(url);
     startAttack(url);
+    // SOC starts immediately — steps 1-4 are local, step 5 (LLM) will back off
+    // and retry if rate-limited by the concurrent attack.
+    startSOC({ scenario: 'success' });
   };
 
   const handleReset = () => {
-    setTargetUrl('');
     window.location.reload();
   };
 
@@ -54,7 +69,7 @@ function App() {
           {redStatus === 'idle' && (
             <AttackLaunch onStart={handleStartRed} />
           )}
-          {(redStatus === 'attacking' || redStatus === 'error' || (redStatus === 'done' && !redResults)) && (
+          {(redStatus === 'attacking' || redStatus === 'error') && (
             <AttackProgress events={redEvents} onStop={stopAttack} />
           )}
           {redStatus === 'done' && redResults && (

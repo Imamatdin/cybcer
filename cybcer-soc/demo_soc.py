@@ -97,7 +97,28 @@ def run_soc_demo(bots_path: str = None, events_path: str = None, rate: int = 200
         print(f"      Wrote initial {ui_state_path}")
     except Exception as e:
         print(f"Failed to write initial ui_state: {e}")
-    
+
+    # Pipeline-event accumulator — each flush overwrites ui_state.json atomically
+    # so the 750 ms poller in useSOCStream picks up every step transition.
+    ui_state_path = artifacts_dir / "ui_state.json"
+    pipeline_events = []
+
+    def emit_pipeline(new_events):
+        pipeline_events.extend(new_events)
+        ui = {
+            "run_id": datetime.utcnow().isoformat() + "Z",
+            "status": "running",
+            "metrics": {},
+            "red": {"stage": "running", "recent_events": list(pipeline_events)},
+            "blue": {}
+        }
+        tmp = ui_state_path.with_suffix('.tmp')
+        with open(tmp, 'w', encoding='utf-8') as f:
+            json.dump(ui, f, indent=2)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, ui_state_path)
+
     print("=" * 70)
     print("SOC AUTOPILOT DEMO - Cerebras Speed Challenge")
     print("=" * 70)
@@ -108,6 +129,7 @@ def run_soc_demo(bots_path: str = None, events_path: str = None, rate: int = 200
     # ─────────────────────────────────────────────────────────────────────
     # STEP 1: Ingest events
     # ─────────────────────────────────────────────────────────────────────
+    emit_pipeline([{"type": "status", "step": 1, "message": "Ingesting events..."}])
     print("[1/6] Ingesting events...")
     ingest_start = time.time()
 
@@ -135,11 +157,14 @@ def run_soc_demo(bots_path: str = None, events_path: str = None, rate: int = 200
                     raw.append(json.loads(line))
         else:
             with open(ep, 'r', encoding='utf-8') as f:
-                data = json.load(f)
-                if isinstance(data, list):
-                    raw = data
+                content = f.read().strip()
+                # Try JSONL first (one JSON per line)
+                if '\n' in content and not content.startswith('['):
+                    raw = [json.loads(line) for line in content.split('\n') if line.strip()]
                 else:
-                    raw = [data]
+                    # Regular JSON
+                    data = json.loads(content)
+                    raw = data if isinstance(data, list) else [data]
 
         events = []
         for e in raw:
@@ -159,10 +184,12 @@ def run_soc_demo(bots_path: str = None, events_path: str = None, rate: int = 200
                 'src_ip': src_ip,
                 'dst_ip': dst_ip,
                 'user': user,
-                'severity': e.get('severity') or e.get('sev') or 'low',
                 'message': message,
-                'fields': e.get('fields', {})
+                'severity': e.get('severity'),
+                'source': e.get('source') or 'events',
+                'fields': {k: v for k, v in e.items() if k not in ('ts', 'timestamp', '_time', 'event_type', 'sourcetype', 'host', 'hostname', 'src_ip', 'source_ip', 'src', 'dst_ip', 'dest_ip', 'dst', 'user', 'username', 'message', 'msg', 'severity', 'source', 'sev')}
             }
+        
             events.append(CanonicalEvent.from_dict(ev))
         print(f"      Loaded {len(events)} events from {events_path}")
     else:
@@ -180,7 +207,12 @@ def run_soc_demo(bots_path: str = None, events_path: str = None, rate: int = 200
     write_canonical_jsonl(events[:1000], str(sample_path))
     print(f"      Wrote {min(len(events), 1000)} events to {sample_path}")
     print()
-    
+
+    emit_pipeline([
+        {"type": "progress", "step": 1, "events_count": len(events)},
+        {"type": "status", "step": 2, "message": "Building case..."}
+    ])
+
     # ─────────────────────────────────────────────────────────────────────
     # STEP 2: Case building (deterministic)
     # ─────────────────────────────────────────────────────────────────────
@@ -193,7 +225,12 @@ def run_soc_demo(bots_path: str = None, events_path: str = None, rate: int = 200
     bench["case_build_time_sec"] = round(time.time() - case_start, 3)
     print(f"      Case {case_id}: {len(case.hosts)} hosts, {len(case.src_ips)} IPs, {len(case.evidence)} evidence items")
     print()
-    
+
+    emit_pipeline([
+        {"type": "progress", "step": 2, "hosts": len(case.hosts), "ips": len(case.src_ips), "evidence": len(case.evidence)},
+        {"type": "status", "step": 3, "message": "Enriching CVEs (KEV + EPSS)..."}
+    ])
+
     # ─────────────────────────────────────────────────────────────────────
     # STEP 3: CVE enrichment (KEV + EPSS)
     # ─────────────────────────────────────────────────────────────────────
@@ -210,7 +247,12 @@ def run_soc_demo(bots_path: str = None, events_path: str = None, rate: int = 200
         json.dump(cve_intel, f, indent=2)
     print(f"      Wrote {intel_path}")
     print()
-    
+
+    emit_pipeline([
+        {"type": "progress", "step": 3, "cves": cve_intel},
+        {"type": "status", "step": 4, "message": "Generating patch plan..."}
+    ])
+
     # ─────────────────────────────────────────────────────────────────────
     # STEP 4: Patch plan (deterministic)
     # ─────────────────────────────────────────────────────────────────────
@@ -226,7 +268,12 @@ def run_soc_demo(bots_path: str = None, events_path: str = None, rate: int = 200
         json.dump(patch_plan, f, indent=2)
     print(f"      Wrote {patch_path}")
     print()
-    
+
+    emit_pipeline([
+        {"type": "progress", "step": 4, "patch_plan": patch_plan[:5]},
+        {"type": "status", "step": 5, "message": "Generating incident brief (Cerebras)..."}
+    ])
+
     # ─────────────────────────────────────────────────────────────────────
     # STEP 5: LLM incident brief (Cerebras + optional Gemini PARALLEL)
     # ─────────────────────────────────────────────────────────────────────
@@ -493,13 +540,31 @@ def run_soc_demo(bots_path: str = None, events_path: str = None, rate: int = 200
         blue = {
             "case_id": case_id,
             "severity": "high",
-            "summary": (brief_result.get('brief', {}).get('summary') if isinstance(brief_result, dict) else '') or "Awaiting brief...",
+            "summary": "Awaiting brief...",
             "key_entities": {"hosts": hosts, "ips": ips, "users": users},
             "attack_mapping": attack_mapping,
             "containment": [{"action": "isolate host", "why": "suspected compromise"}],
             "patch_priority": patch_priority,
             "timeline": [{"ts": t["ts"], "event": t["event"]} for t in (case.timeline[:20] if case and getattr(case, 'timeline', None) else [])]
         }
+
+        # Overlay real LLM brief fields when available — fallbacks above stay for failure cases
+        if isinstance(brief_result, dict) and brief_result.get('ok') and isinstance(brief_result.get('brief'), dict):
+            llm = brief_result['brief']
+            if llm.get('summary'):
+                blue['summary'] = llm['summary']
+            if llm.get('confidence') is not None:
+                blue['confidence'] = llm['confidence']
+            if llm.get('case_id'):
+                blue['case_id'] = llm['case_id']
+            if llm.get('attack_mapping'):
+                blue['attack_mapping'] = llm['attack_mapping']
+            if llm.get('containment_steps'):
+                blue['containment'] = llm['containment_steps']
+            if llm.get('timeline'):
+                blue['timeline'] = llm['timeline']
+            if llm.get('key_entities'):
+                blue['key_entities'] = llm['key_entities']
 
         ui = {
             "run_id": datetime.utcnow().isoformat() + "Z",

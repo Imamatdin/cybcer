@@ -1,24 +1,26 @@
 import { useState, useEffect, useRef } from 'react';
 
-export const useAttackStream = (targetUrl) => {
+export const useAttackStream = (targetUrl, onFallbackToSOC) => {
   const [events, setEvents] = useState([]);
-  const [status, setStatus] = useState('idle'); // idle, attacking, done, error
+  const [status, setStatus] = useState('idle');
   const [error, setError] = useState(null);
   const [results, setResults] = useState(null);
   const eventSourceRef = useRef(null);
+  const statusRef = useRef('idle');
+  const eventsRef = useRef([]);
 
   const startAttack = (urlOverride) => {
     const activeUrl = urlOverride || targetUrl;
     if (!activeUrl) return;
 
-    // Reset state
     setEvents([]);
+    eventsRef.current = [];
     setStatus('attacking');
+    statusRef.current = 'attacking';
     setError(null);
     setResults(null);
 
     try {
-      // Connect to SSE endpoint
       const url = `/attack?target=${encodeURIComponent(activeUrl)}`;
       const evtSource = new EventSource(url);
       eventSourceRef.current = evtSource;
@@ -29,14 +31,25 @@ export const useAttackStream = (targetUrl) => {
 
           if (data.type === 'done') {
             setStatus('done');
+            statusRef.current = 'done';
             evtSource.close();
           } else if (data.type === 'summary') {
             setResults(prev => ({ ...prev, summary: data }));
           } else if (data.type === 'genome') {
             setResults(prev => ({ ...prev, genome: data.content }));
+          } else if (data.type === 'error') {
+            // Attack failed - trigger SOC fallback
+            const updated = [...eventsRef.current, data];
+            eventsRef.current = updated;
+            setEvents(updated);
+            evtSource.close();
+            if (onFallbackToSOC) {
+              onFallbackToSOC(updated);
+            }
           } else {
-            // Regular event (think, action, observation, etc.)
-            setEvents(prev => [...prev, data]);
+            const updated = [...eventsRef.current, data];
+            eventsRef.current = updated;
+            setEvents(updated);
           }
         } catch (e) {
           console.error("Failed to parse event", e);
@@ -44,18 +57,14 @@ export const useAttackStream = (targetUrl) => {
       };
 
       evtSource.onerror = (err) => {
+        // onerror fires on normal close too — ignore if already done
+        if (statusRef.current === 'done') return;
         console.error("EventSource error", err);
-        // Sometimes onerror fires on close, check if we are done
-        if (status !== 'done') {
-          evtSource.close();
-          // Optional: Don't set error if we just finished normally? 
-          // For now, let's assume if it errors in 'attacking' state it's real.
-          if (eventSourceRef.current?.readyState === EventSource.CLOSED) {
-            // Connection closed
-          } else {
-            setError("Connection lost");
-            setStatus('error');
-          }
+        evtSource.close();
+        setStatus('error');
+        statusRef.current = 'error';
+        if (onFallbackToSOC) {
+          onFallbackToSOC(eventsRef.current);
         }
       };
 
@@ -68,8 +77,12 @@ export const useAttackStream = (targetUrl) => {
 
   const stopAttack = () => {
     if (eventSourceRef.current) {
+      statusRef.current = 'done';
       eventSourceRef.current.close();
-      setStatus('done'); // Or 'aborted'
+      eventSourceRef.current = null;
+      if (onFallbackToSOC) {
+        onFallbackToSOC(eventsRef.current);
+      }
     }
   };
 
