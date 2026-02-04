@@ -19,7 +19,7 @@ export const useAttackStream = (targetUrl) => {
 
     try {
       // Connect to SSE endpoint
-      const url = `http://localhost:8000/attack?target=${encodeURIComponent(activeUrl)}`;
+      const url = `http://localhost:5173/attack?target=${encodeURIComponent(activeUrl)}`;
       const evtSource = new EventSource(url);
       eventSourceRef.current = evtSource;
 

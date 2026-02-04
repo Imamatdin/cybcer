@@ -145,11 +145,40 @@ function SOCDashboard({ events, status, results, onStart, onReset }) {
 
   // DONE STATE - Results Dashboard
   if (status === 'done' && results) {
-    const { summary, brief, cerebras_time, tokens_per_sec, patch_plan } = results;
+    // Extract data from new ui_state structure
+    const metrics = results.metrics || {};
+    const blue = results.blue || {};
+    const red = results.red || {};
+
+    // Backward compatibility: support both old and new data structures
+    const brief = blue || results.brief || {};
+    const cerebras_time = metrics.time_to_first_brief_sec || results.cerebras_time;
+    const tokens_per_sec = metrics.tokens_per_sec || results.tokens_per_sec;
+    const patch_plan = blue.patch_priority || results.patch_plan || [];
+    const summary = {
+      events_count: metrics.events_total || results.events_count,
+      total_time: metrics.total_runtime_sec || results.total_time
+    };
+
+    const resultStatus = results.result || 'success';
+
+    // Result banner configuration
+    const resultBanners = {
+      success: { icon: '🎯', text: 'ATTACK CHAIN DETECTED', color: '#dc2626' },
+      blocked: { icon: '🛡️', text: 'ATTACK BLOCKED', color: '#16a34a' },
+      inconclusive: { icon: '🔍', text: 'INSUFFICIENT EVIDENCE', color: '#ca8a04' }
+    };
+    const banner = resultBanners[resultStatus] || resultBanners.success;
 
     return (
       <div className="soc-container">
         <div className="soc-results">
+          {/* Result Banner */}
+          <div className="result-banner" style={{ backgroundColor: banner.color }}>
+            <span className="result-icon">{banner.icon}</span>
+            <span className="result-text">{banner.text}</span>
+          </div>
+
           {/* Speed Banner */}
           <div className="speed-banner">
             <div className="speed-stat main">
@@ -225,7 +254,7 @@ function SOCDashboard({ events, status, results, onStart, onReset }) {
             {/* Containment */}
             <div className="result-card containment-card">
               <h2>🛑 Containment</h2>
-              {(brief?.containment_steps || []).map((step, i) => (
+              {(brief?.containment_steps || brief?.containment || []).map((step, i) => (
                 <div key={i} className="containment-item">
                   <span className="action">{i + 1}. {step.action}</span>
                   <span className="why">{step.why}</span>
