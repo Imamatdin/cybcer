@@ -1,6 +1,7 @@
 import ReactMarkdown from 'react-markdown';
+import EventCard from './EventCard';
 
-const ResultsDashboard = ({ data, onReset }) => {
+const ResultsDashboard = ({ data, events = [], onReset }) => {
     const { summary, genome } = data;
 
     // Calculate Gemini estimate (3s per step is conservative for GPT-4/Gemini visual comparison)
@@ -64,6 +65,22 @@ const ResultsDashboard = ({ data, onReset }) => {
                     <div style={{ textAlign: 'right', color: '#888' }}>~{geminiTime?.toFixed(1)}s</div>
                 </div>
             </div>
+
+            {events.length > 0 && (
+                <div className="panel" style={{ marginBottom: '2rem' }}>
+                    <h3>ATTACK LOG</h3>
+                    <div style={{
+                        maxHeight: '420px',
+                        overflowY: 'auto',
+                        paddingRight: '0.5rem',
+                        marginTop: '0.75rem'
+                    }}>
+                        {events.map((event, index) => (
+                            <EventCard key={index} event={event} />
+                        ))}
+                    </div>
+                </div>
+            )}
 
             {genome && (
                 <div className="panel genome-panel">

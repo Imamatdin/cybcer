@@ -33,11 +33,11 @@ class ToolExecutor:
         
         try:
             if method == "GET":
-                resp = self.session.get(url, cookies=cookies, timeout=10)
+                resp = self.session.get(url, cookies=cookies, timeout=2)
             elif method == "POST":
-                resp = self.session.post(url, data=data, cookies=cookies, timeout=10)
+                resp = self.session.post(url, data=data, cookies=cookies, timeout=2)
             else:
-                resp = self.session.request(method, url, data=data, cookies=cookies, timeout=10)
+                resp = self.session.request(method, url, data=data, cookies=cookies, timeout=2)
             
             # Truncate long responses
             body = resp.text[:2000] if len(resp.text) > 2000 else resp.text

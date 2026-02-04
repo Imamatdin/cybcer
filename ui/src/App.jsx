@@ -58,7 +58,7 @@ function App() {
             <AttackProgress events={redEvents} onStop={stopAttack} />
           )}
           {redStatus === 'done' && redResults && (
-            <ResultsDashboard data={redResults} onReset={handleReset} />
+            <ResultsDashboard data={redResults} events={redEvents} onReset={handleReset} />
           )}
         </>
       )}

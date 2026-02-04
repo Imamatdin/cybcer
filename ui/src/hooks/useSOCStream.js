@@ -8,7 +8,7 @@ export const useSOCStream = () => {
 
   const fetchState = async () => {
     try {
-      const res = await fetch('http://localhost:5173/api/state');
+      const res = await fetch('/api/state');
       if (!res.ok) throw new Error('Fetch failed');
       const data = await res.json();
       // Update status and results
@@ -48,7 +48,7 @@ export const useSOCStream = () => {
       else if (botsPath) body.bots_path = botsPath;
       else body.scenario = scenario;
 
-      await fetch('http://localhost:5173/api/start', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      await fetch('/api/start', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     } catch (e) {
       console.error('Failed to POST /api/start', e);
     }

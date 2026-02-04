@@ -3,6 +3,8 @@ import time
 import requests
 from typing import Generator
 from dataclasses import dataclass, field
+from urllib.parse import urlparse, urlunparse
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from prompts import SYSTEM_PROMPT, format_react_prompt
 from tools import ToolExecutor
 from output import AttackLogger
@@ -137,7 +139,65 @@ class CerebrasAttacker:
         """Execute the attack loop, yielding status updates."""
         self.start_time = time.time()
         self.logger.start(self.target_url)
-        
+
+        # Preflight: verify target is reachable; if not, probe common ports on
+        # the same host and switch to whichever responds first.
+        FALLBACK_PORTS = [80, 3000, 5000, 5001, 8000, 8080, 8443, 9000]
+
+        def _probe(url):
+            requests.get(url, timeout=2)
+            return url
+
+        try:
+            _probe(self.target_url)
+        except Exception:
+            # Original port is down — scan fallback ports concurrently
+            parsed = urlparse(self.target_url)
+            host = parsed.hostname
+            scheme = parsed.scheme or "http"
+            # Exclude the port we already tried
+            ports_to_try = [p for p in FALLBACK_PORTS if p != (parsed.port or 80)]
+
+            found_url = None
+            with ThreadPoolExecutor(max_workers=len(ports_to_try)) as pool:
+                futures = {
+                    pool.submit(_probe, f"{scheme}://{host}:{p}"): p
+                    for p in ports_to_try
+                }
+                for future in as_completed(futures, timeout=3):
+                    try:
+                        found_url = future.result()
+                        break          # first responder wins
+                    except Exception:
+                        continue
+
+            # If the specified host is entirely dead, retry on localhost
+            # (catches the common case: app moved off a remote/WSL IP back to local)
+            if not found_url and host not in ("localhost", "127.0.0.1"):
+                with ThreadPoolExecutor(max_workers=len(FALLBACK_PORTS)) as pool:
+                    futures = {
+                        pool.submit(_probe, f"{scheme}://localhost:{p}"): p
+                        for p in FALLBACK_PORTS
+                    }
+                    for future in as_completed(futures, timeout=3):
+                        try:
+                            found_url = future.result()
+                            break
+                        except Exception:
+                            continue
+
+            if not found_url:
+                yield self.logger.warning(
+                    f"Target unreachable on {host} and localhost — BLOCKED"
+                )
+                yield self.logger.summary(self.state, time.time() - self.start_time)
+                return
+
+            # Update target everywhere to the working URL
+            self.target_url = found_url
+            self.state.target_url = found_url
+            yield self.logger.warning(f"Original port down — switched target to {found_url}")
+
         # Initial prompt
         prompt = format_react_prompt(
             target=self.target_url,
