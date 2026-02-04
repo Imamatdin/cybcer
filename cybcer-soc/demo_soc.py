@@ -22,7 +22,7 @@ from ingest.bots_loader import CanonicalEvent, load_bots_folder, write_canonical
 from agent.case_builder import build_case_from_events
 from agent.patch_plan import generate_patch_plan, ExposedService
 from intel.enrich import enrich_cve_list
-from llm.cerebras_client import generate_incident_brief
+from llm.cerebras_client import generate_incident_brief, generate_incident_brief_parallel
 
 
 # Sample services for demo (replace with real dep-check output)
@@ -228,28 +228,100 @@ def run_soc_demo(bots_path: str = None, events_path: str = None, rate: int = 200
     print()
     
     # ─────────────────────────────────────────────────────────────────────
-    # STEP 5: LLM incident brief (Cerebras)
+    # STEP 5: LLM incident brief (Cerebras + optional Gemini PARALLEL)
     # ─────────────────────────────────────────────────────────────────────
-    print("[5/6] Generating incident brief (Cerebras)...")
-    llm_start = time.time()
-    
-    brief_result = generate_incident_brief(
-        case_data=case.to_dict(),
-        cve_intel=cve_intel,
-        patch_plan=patch_plan,
-        provider="cerebras"
-    )
-    
-    bench["cerebras_time_sec"] = round(time.time() - llm_start, 3)
-    bench["cerebras_tokens_out"] = brief_result.get("tokens_out", 0)
-    bench["cerebras_tokens_per_sec"] = brief_result.get("tokens_per_sec", 0)
-    
+    # Initialize compare tracking
+    compare_info = {
+        "enabled": compare_gemini,
+        "cerebras": {"called": False, "ok": False, "latency_ms": 0, "error": None},
+        "gemini": {"called": False, "ok": False, "latency_ms": 0, "error": None},
+        "speedup": None
+    }
+
+    if compare_gemini:
+        # PARALLEL comparison - both calls run simultaneously
+        print("[5/6] Generating incident briefs (Cerebras + Gemini PARALLEL)...")
+        llm_start = time.time()
+
+        parallel_results = generate_incident_brief_parallel(
+            case_data=case.to_dict(),
+            cve_intel=cve_intel,
+            patch_plan=patch_plan
+        )
+
+        # Extract Cerebras result
+        cerebras_result = parallel_results.get("cerebras", {})
+        brief_result = cerebras_result  # Use Cerebras as primary
+
+        # Update bench with Cerebras metrics
+        bench["cerebras_time_sec"] = cerebras_result.get("generation_time_sec", 0)
+        bench["cerebras_tokens_out"] = cerebras_result.get("tokens_out", 0)
+        bench["cerebras_tokens_per_sec"] = cerebras_result.get("tokens_per_sec", 0)
+
+        # Update compare info for Cerebras
+        compare_info["cerebras"]["called"] = True
+        compare_info["cerebras"]["ok"] = cerebras_result.get("ok", False)
+        compare_info["cerebras"]["latency_ms"] = int(bench["cerebras_time_sec"] * 1000)
+        compare_info["cerebras"]["error"] = cerebras_result.get("error")
+
+        # Update bench with Gemini metrics
+        gemini_result = parallel_results.get("gemini", {})
+        bench["gemini_time_sec"] = gemini_result.get("generation_time_sec", 0)
+        bench["gemini_ok"] = gemini_result.get("ok", False)
+        bench["gemini_error"] = gemini_result.get("error")
+
+        # Update compare info for Gemini
+        compare_info["gemini"]["called"] = True
+        compare_info["gemini"]["ok"] = gemini_result.get("ok", False)
+        compare_info["gemini"]["latency_ms"] = int(bench["gemini_time_sec"] * 1000)
+        compare_info["gemini"]["error"] = gemini_result.get("error")
+
+        # Speedup calculation
+        if parallel_results.get("both_ok"):
+            bench["speedup_vs_gemini"] = parallel_results.get("speedup", 0)
+            compare_info["speedup"] = bench["speedup_vs_gemini"]
+            print(f"      Cerebras: {bench['cerebras_time_sec']}s ({bench['cerebras_tokens_per_sec']} tok/s)")
+            print(f"      Gemini:   {bench['gemini_time_sec']}s")
+            print(f"      >>> CEREBRAS SPEEDUP: {bench['speedup_vs_gemini']}x faster <<<")
+        else:
+            print(f"      Cerebras: {bench['cerebras_time_sec']}s - {'OK' if compare_info['cerebras']['ok'] else 'FAILED: ' + str(compare_info['cerebras']['error'])}")
+            print(f"      Gemini:   {bench['gemini_time_sec']}s - {'OK' if compare_info['gemini']['ok'] else 'FAILED: ' + str(compare_info['gemini']['error'])}")
+            if not compare_info["gemini"]["ok"]:
+                print(f"      [!] Gemini failed - speedup cannot be calculated")
+
+        bench["parallel_time_sec"] = parallel_results.get("parallel_time_sec", 0)
+        print(f"      Parallel wall time: {bench['parallel_time_sec']}s")
+        print()
+
+    else:
+        # Cerebras only (no comparison)
+        print("[5/6] Generating incident brief (Cerebras)...")
+        llm_start = time.time()
+
+        brief_result = generate_incident_brief(
+            case_data=case.to_dict(),
+            cve_intel=cve_intel,
+            patch_plan=patch_plan,
+            provider="cerebras"
+        )
+
+        bench["cerebras_time_sec"] = round(time.time() - llm_start, 3)
+        bench["cerebras_tokens_out"] = brief_result.get("tokens_out", 0)
+        bench["cerebras_tokens_per_sec"] = brief_result.get("tokens_per_sec", 0)
+
+        compare_info["cerebras"]["called"] = True
+        compare_info["cerebras"]["ok"] = brief_result.get("ok", False)
+        compare_info["cerebras"]["latency_ms"] = int(bench["cerebras_time_sec"] * 1000)
+        compare_info["cerebras"]["error"] = brief_result.get("error")
+
+        print(f"      Time: {bench['cerebras_time_sec']}s, Speed: {bench['cerebras_tokens_per_sec']} tokens/sec")
+
+    # Write brief artifact
     brief_path = artifacts_dir / "incident_brief.json"
     with open(brief_path, "w") as f:
         json.dump(brief_result.get("brief", brief_result), f, indent=2)
-    print(f"      Time: {bench['cerebras_time_sec']}s, Speed: {bench['cerebras_tokens_per_sec']} tokens/sec")
     print(f"      Wrote {brief_path}")
-    
+
     # Basic validation
     if "brief" in brief_result:
         brief = brief_result["brief"]
@@ -259,28 +331,10 @@ def run_soc_demo(bots_path: str = None, events_path: str = None, rate: int = 200
         if missing:
             print(f"      Missing: {missing}")
     print()
-    
-    # ─────────────────────────────────────────────────────────────────────
-    # STEP 5b: Gemini comparison (optional)
-    # ─────────────────────────────────────────────────────────────────────
-    if compare_gemini:
-        print("[5b] Generating incident brief (Gemini for comparison)...")
-        gemini_start = time.time()
-        
-        gemini_result = generate_incident_brief(
-            case_data=case.to_dict(),
-            cve_intel=cve_intel,
-            patch_plan=patch_plan,
-            provider="gemini"
-        )
-        
-        bench["gemini_time_sec"] = round(time.time() - gemini_start, 3)
-        bench["speedup_vs_gemini"] = round(bench["gemini_time_sec"] / bench["cerebras_time_sec"], 2) if bench["cerebras_time_sec"] > 0 else 0
-        
-        print(f"      Gemini time: {bench['gemini_time_sec']}s")
-        print(f"      >>> CEREBRAS SPEEDUP: {bench['speedup_vs_gemini']}x faster <<<")
-        print()
-    
+
+    # Store compare info in bench for ui_state
+    bench["compare"] = compare_info
+
     # ─────────────────────────────────────────────────────────────────────
     # STEP 6: Write timeline + final artifacts
     # ─────────────────────────────────────────────────────────────────────

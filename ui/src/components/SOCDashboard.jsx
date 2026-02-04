@@ -1,11 +1,12 @@
 import { useState } from 'react';
 
 function SOCDashboard({ events, status, results, onStart, onReset }) {
-  const [botsPath, setBotsPath] = useState('cybcer-soc/data/bots');
+  const [scenario, setScenario] = useState('success');
 
   const handleStart = (e) => {
     e.preventDefault();
-    onStart({ botsPath });
+    // Pass scenario to trigger the correct events file
+    onStart({ scenario });
   };
 
   // IDLE STATE - Launch Screen
@@ -39,12 +40,15 @@ function SOCDashboard({ events, status, results, onStart, onReset }) {
 
           <form onSubmit={handleStart} className="soc-form">
             <div className="input-row">
-              <input
-                type="text"
-                value={botsPath}
-                onChange={(e) => setBotsPath(e.target.value)}
-                placeholder="cybcer-soc/data/bots"
-              />
+              <select
+                value={scenario}
+                onChange={(e) => setScenario(e.target.value)}
+                className="scenario-select"
+              >
+                <option value="success">Attack Chain Detected</option>
+                <option value="blocked">Attack Blocked by Controls</option>
+                <option value="inconclusive">Insufficient Evidence</option>
+              </select>
               <button type="submit" className="start-btn">
                 ▶ ANALYZE
               </button>
