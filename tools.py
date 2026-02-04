@@ -47,21 +47,36 @@ class ToolExecutor:
             return f"Request failed: {str(e)}"
     
     def tool_scan_paths(self, params: dict, state: Any) -> str:
-        """Scan for common paths."""
+        """Scan for common paths with concurrent requests for SPEED."""
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+
         base_url = params.get("base_url", state.target_url).rstrip("/")
-        
         found = []
-        for path in self.common_paths:
+
+        def check_path(path):
             try:
                 url = f"{base_url}{path}"
-                resp = self.session.get(url, timeout=5)
+                # Short timeout for speed - fail fast
+                resp = self.session.get(url, timeout=2)
                 if resp.status_code == 200:
-                    found.append(f"{path} (200 OK, {len(resp.text)} bytes)")
+                    return f"{path} (200 OK, {len(resp.text)} bytes)"
                 elif resp.status_code in [301, 302, 403]:
-                    found.append(f"{path} ({resp.status_code})")
+                    return f"{path} ({resp.status_code})"
             except:
                 pass
-        
+            return None
+
+        # Scan all paths concurrently
+        with ThreadPoolExecutor(max_workers=6) as executor:
+            futures = {executor.submit(check_path, path): path for path in self.common_paths}
+            for future in as_completed(futures, timeout=10):  # Overall timeout
+                try:
+                    result = future.result()
+                    if result:
+                        found.append(result)
+                except:
+                    pass
+
         if found:
             return f"Path scan complete. Found {len(found)} accessible paths:\n" + "\n".join(found)
         return "Path scan complete. No interesting paths found."

@@ -120,7 +120,8 @@
   gap: 0;
 }
 
-.input-row input {
+.input-row input,
+.input-row .scenario-select {
   flex: 1;
   padding: 1rem;
   background: #111;
@@ -129,11 +130,19 @@
   font-family: 'Courier New', monospace;
   font-size: 1rem;
   border-radius: 4px 0 0 4px;
+  cursor: pointer;
 }
 
-.input-row input:focus {
+.input-row input:focus,
+.input-row .scenario-select:focus {
   outline: none;
   border-color: #0ff;
+}
+
+.scenario-select option {
+  background: #111;
+  color: #fff;
+  padding: 0.5rem;
 }
 
 .start-btn {

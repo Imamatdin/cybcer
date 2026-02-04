@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Cerebras LLM client for incident brief generation.
-OpenAI-compatible API wrapper with retries.
+OpenAI-compatible API wrapper with timeouts and parallel support.
 """
 
 import os
@@ -10,22 +10,32 @@ import time
 from typing import Optional, Dict
 from dotenv import load_dotenv
 from openai import OpenAI
+import httpx
 
 load_dotenv()
 
-# Client setup
+# Client setup with explicit timeouts
+CEREBRAS_TIMEOUT = 15.0  # seconds
+GEMINI_TIMEOUT = 12.0    # seconds - stricter for baseline
+
 cerebras_client = OpenAI(
     base_url="https://api.cerebras.ai/v1",
-    api_key=os.getenv("CEREBRAS_API_KEY")
+    api_key=os.getenv("CEREBRAS_API_KEY"),
+    timeout=httpx.Timeout(CEREBRAS_TIMEOUT, connect=5.0)
 )
 
 gemini_client = OpenAI(
     base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
-    api_key=os.getenv("GEMINI_API_KEY")
+    api_key=os.getenv("GEMINI_API_KEY"),
+    timeout=httpx.Timeout(GEMINI_TIMEOUT, connect=5.0)
 )
 
-CEREBRAS_MODEL = "zai-glm-4.7"
-GEMINI_MODEL = "gemini-2.5-flash"
+CEREBRAS_MODEL = "llama-4-scout-17b-16e-instruct"
+GEMINI_MODEL = "gemini-2.0-flash"
+
+# Token limits - SPEED FIRST
+CEREBRAS_MAX_TOKENS = 1500  # Reduced for speed
+GEMINI_MAX_TOKENS = 800     # Even smaller for baseline comparison
 
 
 INCIDENT_BRIEF_PROMPT = """You are a SOC analyst. Analyze this case data and produce a structured incident brief.
@@ -71,46 +81,59 @@ Generate the incident brief JSON:"""
 
 
 def generate_incident_brief(case_data: dict, cve_intel: list, patch_plan: list,
-                            provider: str = "cerebras", max_retries: int = 2) -> dict:
-    """Generate incident brief using LLM."""
-    
-    client = cerebras_client if provider == "cerebras" else gemini_client
-    model = CEREBRAS_MODEL if provider == "cerebras" else GEMINI_MODEL
-    
+                            provider: str = "cerebras", max_retries: int = 1) -> dict:
+    """Generate incident brief using LLM.
+
+    SPEED-OPTIMIZED:
+    - Hard timeouts per provider
+    - Reduced max_tokens
+    - Single retry (no sleep)
+    - Returns detailed error info for UI
+    """
+
+    is_cerebras = provider == "cerebras"
+    client = cerebras_client if is_cerebras else gemini_client
+    model = CEREBRAS_MODEL if is_cerebras else GEMINI_MODEL
+    max_tokens = CEREBRAS_MAX_TOKENS if is_cerebras else GEMINI_MAX_TOKENS
+
+    # Truncate case data more aggressively for speed
     prompt = INCIDENT_BRIEF_PROMPT.format(
-        case_data=json.dumps(case_data, indent=2)[:6000],
-        cve_intel=json.dumps(cve_intel, indent=2),
-        patch_plan=json.dumps(patch_plan[:5], indent=2),  # Top 5
+        case_data=json.dumps(case_data, indent=2)[:4000],  # Reduced from 6000
+        cve_intel=json.dumps(cve_intel[:3], indent=2),     # Top 3 only
+        patch_plan=json.dumps(patch_plan[:3], indent=2),   # Top 3 only
         case_id=case_data.get("case_id", "CASE-001"),
-        patch_plan_json=json.dumps(patch_plan[:5])
+        patch_plan_json=json.dumps(patch_plan[:3])
     )
-    
+
+    # Track timing
+    call_start = time.time()
+
     for attempt in range(max_retries + 1):
         try:
             start = time.time()
-            
+
             response = client.chat.completions.create(
                 model=model,
                 messages=[{"role": "user", "content": prompt}],
-                max_tokens=7000,
+                max_tokens=max_tokens,
                 temperature=0.2
             )
-            
+
             elapsed = time.time() - start
             content = response.choices[0].message.content
-            
+
             # Parse JSON
             if "```json" in content:
                 content = content.split("```json")[1].split("```")[0]
             elif "```" in content:
                 content = content.split("```")[1].split("```")[0]
-            
+
             brief = json.loads(content.strip())
-            
+
             usage = response.usage
             tokens_in = usage.prompt_tokens if usage else 0
             tokens_out = usage.completion_tokens if usage else 0
-            
+
             return {
                 "brief": brief,
                 "provider": provider,
@@ -118,23 +141,127 @@ def generate_incident_brief(case_data: dict, cve_intel: list, patch_plan: list,
                 "generation_time_sec": round(elapsed, 3),
                 "tokens_in": tokens_in,
                 "tokens_out": tokens_out,
-                "tokens_per_sec": round(tokens_out / elapsed, 1) if elapsed > 0 else 0
+                "tokens_per_sec": round(tokens_out / elapsed, 1) if elapsed > 0 else 0,
+                "ok": True,
+                "error": None
             }
-            
+
         except json.JSONDecodeError as e:
             if attempt < max_retries:
-                print(f"[!] JSON parse failed, retrying... ({e})")
+                print(f"[{provider}] JSON parse failed, retrying... ({e})")
                 continue
-            return {"error": f"JSON parse failed: {e}", "raw": content}
-        
+            return {
+                "error": f"JSON parse failed: {e}",
+                "provider": provider,
+                "model": model,
+                "ok": False,
+                "generation_time_sec": round(time.time() - call_start, 3),
+                "error_type": "json_parse"
+            }
+
+        except httpx.TimeoutException as e:
+            return {
+                "error": f"Timeout after {GEMINI_TIMEOUT if not is_cerebras else CEREBRAS_TIMEOUT}s",
+                "provider": provider,
+                "model": model,
+                "ok": False,
+                "generation_time_sec": round(time.time() - call_start, 3),
+                "error_type": "timeout"
+            }
+
         except Exception as e:
+            error_msg = str(e)
+            # Don't retry on auth/quota errors
+            if "401" in error_msg or "403" in error_msg or "quota" in error_msg.lower():
+                return {
+                    "error": error_msg,
+                    "provider": provider,
+                    "model": model,
+                    "ok": False,
+                    "generation_time_sec": round(time.time() - call_start, 3),
+                    "error_type": "auth_or_quota"
+                }
+
             if attempt < max_retries:
-                print(f"[!] LLM call failed, retrying... ({e})")
-                time.sleep(1)
+                print(f"[{provider}] LLM call failed, retrying... ({e})")
                 continue
-            return {"error": str(e)}
-    
-    return {"error": "Max retries exceeded"}
+            return {
+                "error": error_msg,
+                "provider": provider,
+                "model": model,
+                "ok": False,
+                "generation_time_sec": round(time.time() - call_start, 3),
+                "error_type": "unknown"
+            }
+
+    return {
+        "error": "Max retries exceeded",
+        "provider": provider,
+        "model": model,
+        "ok": False,
+        "generation_time_sec": round(time.time() - call_start, 3),
+        "error_type": "max_retries"
+    }
+
+
+def generate_incident_brief_parallel(case_data: dict, cve_intel: list, patch_plan: list) -> dict:
+    """Generate incident briefs from both Cerebras and Gemini IN PARALLEL.
+
+    Returns a dict with both results and speedup calculation.
+    This is the CORRECT way to compare - not sequential calls.
+    """
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    results = {
+        "cerebras": None,
+        "gemini": None,
+        "speedup": None,
+        "both_ok": False
+    }
+
+    def call_cerebras():
+        return generate_incident_brief(case_data, cve_intel, patch_plan, provider="cerebras")
+
+    def call_gemini():
+        return generate_incident_brief(case_data, cve_intel, patch_plan, provider="gemini")
+
+    parallel_start = time.time()
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        futures = {
+            executor.submit(call_cerebras): "cerebras",
+            executor.submit(call_gemini): "gemini"
+        }
+
+        for future in as_completed(futures):
+            provider = futures[future]
+            try:
+                results[provider] = future.result()
+            except Exception as e:
+                results[provider] = {
+                    "error": str(e),
+                    "provider": provider,
+                    "ok": False,
+                    "error_type": "executor_error"
+                }
+
+    results["parallel_time_sec"] = round(time.time() - parallel_start, 3)
+
+    # Calculate speedup only if both succeeded
+    cerebras_ok = results["cerebras"] and results["cerebras"].get("ok")
+    gemini_ok = results["gemini"] and results["gemini"].get("ok")
+
+    if cerebras_ok and gemini_ok:
+        cerebras_time = results["cerebras"].get("generation_time_sec", 0)
+        gemini_time = results["gemini"].get("generation_time_sec", 0)
+        if cerebras_time > 0:
+            results["speedup"] = round(gemini_time / cerebras_time, 2)
+        results["both_ok"] = True
+    else:
+        results["speedup"] = None
+        results["both_ok"] = False
+
+    return results
 
 
 if __name__ == "__main__":
@@ -147,9 +274,15 @@ if __name__ == "__main__":
         "timeline": [{"ts": "2024-01-15T10:00:00Z", "event": "Suspicious request", "evidence_id": "E0001"}],
         "evidence": [{"id": "E0001", "excerpt": "jndi:ldap://evil", "reason": "Log4Shell pattern"}]
     }
-    
+
     test_intel = [{"cve": "CVE-2021-44228", "in_kev": True, "epss_score": 0.975}]
     test_plan = [{"priority": 1, "service": "api-gw", "urgency": "immediate"}]
-    
-    result = generate_incident_brief(test_case, test_intel, test_plan)
-    print(json.dumps(result, indent=2))
+
+    print("Testing parallel comparison...")
+    result = generate_incident_brief_parallel(test_case, test_intel, test_plan)
+    print(json.dumps({
+        "cerebras_ok": result["cerebras"].get("ok") if result["cerebras"] else False,
+        "gemini_ok": result["gemini"].get("ok") if result["gemini"] else False,
+        "speedup": result["speedup"],
+        "parallel_time_sec": result["parallel_time_sec"]
+    }, indent=2))
